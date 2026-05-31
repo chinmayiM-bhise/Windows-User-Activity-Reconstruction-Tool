@@ -2,7 +2,7 @@
 
 A professional-grade Digital Forensics and Incident Response (DFIR) tool designed to parse and analyze critical Windows artifacts. This tool provides both a desktop GUI and a web-based interface for extracting actionable intelligence from Windows systems.
 
-## 🚀 Features
+## Features
 
 - **Multi-Artifact Parsing**: Supports extraction and analysis of:
   - **Prefetch Files**: Track application execution history.
@@ -20,7 +20,7 @@ A professional-grade Digital Forensics and Incident Response (DFIR) tool designe
   - Metadata logging (Examiner, Source Host, OS details).
   - SQLite-backed storage for persistence and SQL-based querying.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Language**: Python 3.x
 - **GUI**: Tkinter / CustomTkinter
@@ -29,13 +29,13 @@ A professional-grade Digital Forensics and Incident Response (DFIR) tool designe
 - **Forensics Libraries**: `pylnk3`, `pefile`
 - **Visualization**: Matplotlib, ReportLab (PDF generation)
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Windows OS (for target artifact parsing)
 - Python 3.10+
 - Administrative privileges (required to access certain system artifacts like Prefetch)
 
-## ⚙️ Installation
+## Installation
 
 1. **Clone the repository**:
    ```bash
@@ -54,7 +54,7 @@ A professional-grade Digital Forensics and Incident Response (DFIR) tool designe
    pip install -r requirements.txt
    ```
 
-## 🖥️ Usage
+## Usage
 
 ### Desktop GUI
 Run the main orchestrator:
@@ -69,7 +69,7 @@ python app.py
 ```
 Then navigate to `http://127.0.0.1:5000` in your browser.
 
-## 📂 Project Structure
+## Project Structure
 
 - `parsers/`: Modular logic for individual artifact types.
 - `db/`: Database schema and utility functions.
@@ -78,7 +78,7 @@ Then navigate to `http://127.0.0.1:5000` in your browser.
 - `app.py`: Flask application entry point.
 - `main.py`: Tkinter application entry point.
 
-## ⚖️ License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
