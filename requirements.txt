@@ -1,0 +1,10 @@
+Flask
+gunicorn
+pandas
+pefile
+pylnk3
+pyqt5
+python-dateutil
+Pillow
+reportlab
+psutil
