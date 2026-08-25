@@ -3,80 +3,474 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digital Footprint Analyser</title>
+    <title>AegisDFIR - Windows Forensic Analysis & Activity Reconstruction Platform</title>
     <link rel="icon" href="logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js for High-End Forensic Visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <img src="logo.png" alt="Logo" class="header-logo">
-            <h1>DIGITAL FOOTPRINT ANALYSER</h1>
-            <div class="theme-switch-wrapper">
-                <label class="theme-switch" for="theme-toggle">
-                    <input type="checkbox" id="theme-toggle" />
-                    <div class="slider"></div>
-                </label>
+<body data-theme="dark">
+    <!-- Outer Application Shell -->
+    <div class="dfir-app-container">
+        
+        <!-- TOP FORENSIC BANNER & TELEMETRY -->
+        <header class="dfir-top-header">
+            <div class="header-left">
+                <div class="logo-box">
+                    <img src="logo.png" alt="AegisDFIR" class="dfir-logo" onerror="this.style.display='none'">
+                    <div class="logo-text">
+                        <span class="logo-title">AEGIS<span>DFIR</span></span>
+                        <span class="logo-tag">ENTERPRISE FORENSICS v1.3</span>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <nav class="dfir-nav-tabs">
+                    <button class="nav-tab active" data-view="grid-view">
+                        <span class="tab-icon">📋</span> Artifact Grid
+                    </button>
+                    <button class="nav-tab" data-view="analytics-view">
+                        <span class="tab-icon">📊</span> Visual Analytics
+                    </button>
+                    <button class="nav-tab" data-view="timeline-view">
+                        <span class="tab-icon">⏱️</span> Session Timeline
+                    </button>
+                    <button class="nav-tab" data-view="catalog-view">
+                        <span class="tab-icon">📖</span> Artifact Catalog
+                    </button>
+                </nav>
             </div>
-        </div>
 
-        <div class="top-bar">
-            <input type="text" id="folderPathInput" placeholder="Enter path of artifact">
-            <button id="parseFolderBtn">Parse Folder</button>
-            <button id="parseShellbagsBtn">Parse ShellBags</button>
-        </div>
+            <div class="header-right">
+                <div class="telemetry-badge">
+                    <span class="pulse-indicator"></span>
+                    <span id="headerStatusText">Live Host Analysis Ready</span>
+                </div>
+                <div class="evidence-hash-chip" title="SQLite Database SHA-256 Hash">
+                    <span class="chip-label">DB SHA-256:</span>
+                    <span id="headerDbSha256" class="chip-val">Acquiring...</span>
+                </div>
+                <!-- Theme Switch -->
+                <div class="theme-switch-wrap">
+                    <label class="switch" title="Toggle Dark/Light Forensic Theme">
+                        <input type="checkbox" id="theme-toggle" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </header>
 
-        <div class="status-section" id="statusSection">
-            <!-- Task status messages will appear here -->
-        </div>
+        <!-- COMMAND & ACQUISITION ACTION BAR -->
+        <section class="acquisition-bar">
+            <div class="acq-left">
+                <button id="liveTriageBtn" class="btn btn-primary btn-pulse" title="Automatically extract all available forensic artifacts from live host">
+                    <span class="btn-icon">⚡</span> 1-Click Live Triage
+                </button>
+                
+                <div class="preset-dropdown-wrap">
+                    <select id="presetSelect" class="forensic-select">
+                        <option value="">📂 Quick Forensic Category...</option>
+                        <option value="all_triage">⚡ Full Live Triage (All 12 Artifacts)</option>
+                        <option value="execution_persistence">🚀 Execution & Persistence (Prefetch/UserAssist/BAM/Run)</option>
+                        <option value="file_access">📁 File & Folder Knowledge (LNK/ShellBags/JumpLists)</option>
+                        <option value="browser_downloads">🌐 Web Browsing & Downloads (Chrome/Edge/Firefox)</option>
+                        <option value="powershell_cli">💻 PowerShell CLI Command History</option>
+                        <option value="usb_storage">🔌 USB & Removable Storage Devices</option>
+                        <option value="event_logs">🛡️ Security & Windows Event Logs</option>
+                    </select>
+                </div>
 
-        <div class="table-section">
-            <table id="artifactsTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Type</th>
-                        <th>Name</th>
-                        <th>Path</th>
-                        <th>Timestamp</th>
-                        <th>Last Access</th>
-                        <th>Extra</th>
-                        <th>Details</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Artifacts will be loaded here -->
-                </tbody>
-            </table>
-        </div>
+                <div class="target-scan-wrap">
+                    <input type="text" id="targetPathInput" class="forensic-input" placeholder="Enter target path or mounted drive (e.g. C:\Windows\Prefetch, E:\TriageDump)..." />
+                    <button id="targetScanBtn" class="btn btn-secondary" title="Recursively discover and parse artifacts in folder or drive">
+                        <span class="btn-icon">🔍</span> Auto-Scan Target
+                    </button>
+                </div>
+            </div>
 
-        <div class="bottom-bar">
-            <button id="showCorrelationsBtn">Correlate / Timeline</button>
-            <button id="refreshBtn">Refresh</button>
-            <button id="exportCsvBtn">Export to CSV</button>
-            <button id="exportPdfBtn">Export PDF Report</button>
-            <button id="clearDbBtn">Clear DB</button>
+            <div class="acq-right">
+                <button id="refreshBtn" class="btn btn-ghost" title="Refresh dataset">
+                    <span class="btn-icon">🔄</span> Refresh
+                </button>
+                <div class="export-dropdown-group">
+                    <button id="exportPdfBtn" class="btn btn-export" title="Export Executive Forensic PDF Audit Report">
+                        <span class="btn-icon">📑</span> Export PDF
+                    </button>
+                    <button id="exportCsvBtn" class="btn btn-ghost" title="Export CSV for Excel/Timeline Explorer">
+                        <span class="btn-icon">📄</span> CSV
+                    </button>
+                    <button id="exportJsonBtn" class="btn btn-ghost" title="Export DFIR Standard JSON Timeline">
+                        <span class="btn-icon">📦</span> JSON
+                    </button>
+                </div>
+                <button id="clearDbBtn" class="btn btn-danger-outline" title="Clear artifacts database">
+                    <span class="btn-icon">🗑️</span> Clear
+                </button>
+            </div>
+        </section>
+
+        <!-- STATUS NOTIFICATION TOAST -->
+        <div id="statusToast" class="status-toast"></div>
+
+        <!-- MAIN FORENSIC MULTI-PANE BODY -->
+        <div class="dfir-main-workspace">
+            
+            <!-- VIEW 1: ARTIFACT GRID VIEW (MULTI-PANE: TREE + TABLE + DOCKED INSPECTOR) -->
+            <div id="grid-view" class="view-panel active">
+                <div class="forensic-layout-columns">
+                    
+                    <!-- LEFT SIDEBAR: FORENSIC ARTIFACT TREE (AUTOPSY / AXIOM STYLE) -->
+                    <aside class="forensic-tree-sidebar">
+                        <div class="sidebar-header">
+                            <span class="sidebar-title">EVIDENCE TREE</span>
+                            <span id="treeTotalBadge" class="count-pill">0</span>
+                        </div>
+                        <nav class="artifact-tree-nav">
+                            <div class="tree-node active" data-category="all">
+                                <span class="node-icon">📦</span>
+                                <span class="node-name">All Evidence Items</span>
+                                <span class="node-badge" id="badge-all">0</span>
+                            </div>
+                            <div class="tree-node threat-node" data-category="threats">
+                                <span class="node-icon">🚨</span>
+                                <span class="node-name">Threat & Anomaly Flags</span>
+                                <span class="node-badge danger" id="badge-threats">0</span>
+                            </div>
+
+                            <div class="tree-group-title">PROGRAM EXECUTION</div>
+                            <div class="tree-node" data-category="prefetch">
+                                <span class="node-icon">🚀</span>
+                                <span class="node-name">Prefetch (.pf)</span>
+                                <span class="node-badge" id="badge-prefetch">0</span>
+                            </div>
+                            <div class="tree-node" data-category="userassist">
+                                <span class="node-icon">👤</span>
+                                <span class="node-name">UserAssist (ROT13)</span>
+                                <span class="node-badge" id="badge-userassist">0</span>
+                            </div>
+                            <div class="tree-node" data-category="bam">
+                                <span class="node-icon">⚙️</span>
+                                <span class="node-name">BAM / DAM Kernel</span>
+                                <span class="node-badge" id="badge-bam">0</span>
+                            </div>
+                            <div class="tree-node" data-category="startup">
+                                <span class="node-icon">🔄</span>
+                                <span class="node-name">Startup & Autoruns</span>
+                                <span class="node-badge" id="badge-startup">0</span>
+                            </div>
+
+                            <div class="tree-group-title">FILE & FOLDER ACCESS</div>
+                            <div class="tree-node" data-category="lnk">
+                                <span class="node-icon">🔗</span>
+                                <span class="node-name">LNK Shortcuts</span>
+                                <span class="node-badge" id="badge-lnk">0</span>
+                            </div>
+                            <div class="tree-node" data-category="shellbag">
+                                <span class="node-icon">📂</span>
+                                <span class="node-name">Explorer ShellBags</span>
+                                <span class="node-badge" id="badge-shellbag">0</span>
+                            </div>
+                            <div class="tree-node" data-category="jumplist">
+                                <span class="node-icon">📋</span>
+                                <span class="node-name">Jump Lists</span>
+                                <span class="node-badge" id="badge-jumplist">0</span>
+                            </div>
+                            <div class="tree-node" data-category="recycle">
+                                <span class="node-icon">🗑️</span>
+                                <span class="node-name">Recycle Bin ($I/$R)</span>
+                                <span class="node-badge" id="badge-recycle">0</span>
+                            </div>
+
+                            <div class="tree-group-title">COMMUNICATIONS & WEB</div>
+                            <div class="tree-node" data-category="browser">
+                                <span class="node-icon">🌐</span>
+                                <span class="node-name">Web URLs & History</span>
+                                <span class="node-badge" id="badge-browser">0</span>
+                            </div>
+                            <div class="tree-node" data-category="download">
+                                <span class="node-icon">📥</span>
+                                <span class="node-name">Browser Downloads</span>
+                                <span class="node-badge" id="badge-download">0</span>
+                            </div>
+                            <div class="tree-node" data-category="powershell">
+                                <span class="node-icon">💻</span>
+                                <span class="node-name">PowerShell PSReadLine</span>
+                                <span class="node-badge" id="badge-powershell">0</span>
+                            </div>
+
+                            <div class="tree-group-title">DEVICES & SECURITY</div>
+                            <div class="tree-node" data-category="usb">
+                                <span class="node-icon">🔌</span>
+                                <span class="node-name">USB & Removable Storage</span>
+                                <span class="node-badge" id="badge-usb">0</span>
+                            </div>
+                            <div class="tree-node" data-category="event">
+                                <span class="node-icon">🛡️</span>
+                                <span class="node-name">Security Event Logs (EVTX)</span>
+                                <span class="node-badge" id="badge-event">0</span>
+                            </div>
+                        </nav>
+                    </aside>
+
+                    <!-- RIGHT WORKSPACE: DATA GRID + DOCKED DETAIL INSPECTOR -->
+                    <main class="forensic-grid-workspace">
+                        
+                        <!-- GRID TOOLBAR -->
+                        <div class="grid-toolbar">
+                            <div class="search-box-wrap">
+                                <span class="search-icon">🔎</span>
+                                <input type="text" id="filterSearchInput" class="search-input" placeholder="Instant search by keyword, path, binary, command, anomaly, or timestamp..." />
+                                <button id="clearSearchBtn" class="clear-search-btn" title="Clear search">&times;</button>
+                            </div>
+                            <div class="toolbar-right">
+                                <div class="page-size-wrap">
+                                    <label>Rows:</label>
+                                    <select id="pageSizeSelect" class="page-select">
+                                        <option value="50">50</option>
+                                        <option value="100" selected>100</option>
+                                        <option value="250">250</option>
+                                        <option value="1000">1000</option>
+                                        <option value="all">All</option>
+                                    </select>
+                                </div>
+                                <span id="recordCountDisplay" class="records-badge">Showing 0 of 0</span>
+                            </div>
+                        </div>
+
+                        <!-- MASTER EVIDENCE TABLE -->
+                        <div class="table-viewport-container">
+                            <table id="evidenceTable" class="dfir-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px;" data-sort="id">#</th>
+                                        <th style="width: 140px;" data-sort="artifact_type">Artifact Type</th>
+                                        <th style="width: 220px;" data-sort="name">Binary / Resource</th>
+                                        <th data-sort="path">Source Path / Target / Command</th>
+                                        <th style="width: 175px;" data-sort="timestamp">Timestamp (UTC)</th>
+                                        <th style="width: 160px;">Threat Indicators</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic rows loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- PAGINATION FOOTER -->
+                        <div class="pagination-bar">
+                            <div class="pagination-controls">
+                                <button id="prevPageBtn" class="btn btn-sm btn-ghost">◀ Previous</button>
+                                <span id="pageIndicator" class="page-info">Page 1 of 1</span>
+                                <button id="nextPageBtn" class="btn btn-sm btn-ghost">Next ▶</button>
+                            </div>
+                            <span class="selection-hint">💡 Tip: Click any row to inspect deep forensic metadata below.</span>
+                        </div>
+
+                        <!-- DOCKED EVIDENCE INSPECTOR PANE (MAGNET AXIOM / AUTOPSY STYLE) -->
+                        <div class="docked-inspector-pane">
+                            <div class="inspector-header">
+                                <div class="inspector-tabs">
+                                    <button class="inspect-tab active" data-tab="tab-overview">🏷️ Forensic Overview</button>
+                                    <button class="inspect-tab" data-tab="tab-mitre">🛡️ MITRE & Threat Context</button>
+                                    <button class="inspect-tab" data-tab="tab-json">💻 Raw Forensic JSON</button>
+                                </div>
+                                <div class="inspector-title" id="inspectorHeaderTitle">No artifact selected</div>
+                            </div>
+                            <div class="inspector-body">
+                                <!-- TAB 1: OVERVIEW -->
+                                <div id="tab-overview" class="inspect-tab-content active">
+                                    <div class="inspector-grid">
+                                        <div class="inspect-kv">
+                                            <span class="k">Artifact Type:</span>
+                                            <span class="v" id="insType">-</span>
+                                        </div>
+                                        <div class="inspect-kv">
+                                            <span class="k">Event Time (UTC):</span>
+                                            <span class="v mono highlight-blue" id="insTime">-</span>
+                                        </div>
+                                        <div class="inspect-kv">
+                                            <span class="k">Resource / Executable:</span>
+                                            <span class="v bold" id="insName">-</span>
+                                        </div>
+                                        <div class="inspect-kv">
+                                            <span class="k">Source Path / Target:</span>
+                                            <span class="v mono" id="insPath">-</span>
+                                        </div>
+                                        <div class="inspect-kv full-width">
+                                            <span class="k">Decoded Attributes & Indicators:</span>
+                                            <div class="v code-block" id="insExtra">-</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- TAB 2: MITRE & THREAT CONTEXT -->
+                                <div id="tab-mitre" class="inspect-tab-content">
+                                    <div id="insThreatContent" class="threat-box">
+                                        <p style="color: var(--text-muted);">Select an artifact to analyze potential MITRE ATT&CK tactics, anomalies, or execution patterns.</p>
+                                    </div>
+                                </div>
+                                <!-- TAB 3: RAW JSON -->
+                                <div id="tab-json" class="inspect-tab-content">
+                                    <pre id="insJsonBox" class="json-viewer">Select an artifact to view structured JSON representation.</pre>
+                                </div>
+                            </div>
+                        </div>
+
+                    </main>
+                </div>
+            </div>
+
+            <!-- VIEW 2: VISUAL ANALYTICS & CHARTS VIEW (TIMESKETCH / SPLUNK STYLE) -->
+            <div id="analytics-view" class="view-panel">
+                <div class="analytics-dashboard">
+                    <!-- Top Metric Cards -->
+                    <div class="analytics-metrics-row">
+                        <div class="metric-glass-card">
+                            <div class="m-icon purple">📊</div>
+                            <div class="m-content">
+                                <span class="m-num" id="anTotalCount">0</span>
+                                <span class="m-lbl">Total Artifacts Indexed</span>
+                            </div>
+                        </div>
+                        <div class="metric-glass-card">
+                            <div class="m-icon red">🚨</div>
+                            <div class="m-content">
+                                <span class="m-num text-danger" id="anAnomalyCount">0</span>
+                                <span class="m-lbl">Suspicious & Threat Indicators</span>
+                            </div>
+                        </div>
+                        <div class="metric-glass-card">
+                            <div class="m-icon green">🚀</div>
+                            <div class="m-content">
+                                <span class="m-num text-success" id="anExeCount">0</span>
+                                <span class="m-lbl">Unique Binaries Run</span>
+                            </div>
+                        </div>
+                        <div class="metric-glass-card">
+                            <div class="m-icon cyan">🌐</div>
+                            <div class="m-content">
+                                <span class="m-num text-cyan" id="anWebCount">0</span>
+                                <span class="m-lbl">Web URLs & Downloads</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="charts-grid">
+                        <!-- Chart 1: Temporal Activity Histogram -->
+                        <div class="chart-card card-glass full-span">
+                            <div class="chart-header">
+                                <h3>⏱️ Chronological Activity Density (Events Timeline)</h3>
+                                <span class="chart-sub">Visualizing user activity clustering and event spikes over time</span>
+                            </div>
+                            <div class="chart-canvas-wrap timeline-canvas">
+                                <canvas id="timelineChartCanvas"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Chart 2: Artifact Breakdown Donut -->
+                        <div class="chart-card card-glass">
+                            <div class="chart-header">
+                                <h3>📦 Evidence Categories Breakdown</h3>
+                            </div>
+                            <div class="chart-canvas-wrap">
+                                <canvas id="categoryDonutCanvas"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Chart 3: Top Executed Binaries & Applications -->
+                        <div class="chart-card card-glass">
+                            <div class="chart-header">
+                                <h3>🚀 Top Executed Applications</h3>
+                            </div>
+                            <div class="chart-canvas-wrap">
+                                <canvas id="topAppsCanvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 3: RECONSTRUCTED SESSION TIMELINE VIEW -->
+            <div id="timeline-view" class="view-panel">
+                <div class="session-timeline-container">
+                    <div class="timeline-ctrl-bar">
+                        <div class="filter-group">
+                            <button class="btn btn-sm btn-secondary active" id="btnTimelineAll">All Timeline Events</button>
+                            <button class="btn btn-sm btn-danger-outline" id="btnTimelineAnomaliesOnly">🚨 Anomalies & Attacks Only</button>
+                        </div>
+                        <div class="timeline-search-group">
+                            <input type="text" id="corrSearchInput" class="forensic-input" placeholder="Search timeline events, executables, MITRE tactics..." />
+                        </div>
+                        <button id="btnExportCorrPdf" class="btn btn-export">
+                            <span class="btn-icon">📑</span> Export Correlation Report
+                        </button>
+                    </div>
+
+                    <div class="timeline-events-viewport">
+                        <div id="timelineFeedContainer" class="timeline-feed">
+                            <div class="loading-spinner">Loading reconstructed forensic timeline...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 4: ARTIFACT PATH CATALOG & EXPLORER -->
+            <div id="catalog-view" class="view-panel">
+                <div class="catalog-dashboard">
+                    <div class="catalog-intro-banner card-glass">
+                        <h2>📖 Windows Forensic Artifact Catalog & Live Path Resolver</h2>
+                        <p>Forensic artifacts are scattered across Windows system directories, user profiles, and registry hives. Click any artifact card to auto-populate its path into the scanner or view its forensic significance.</p>
+                    </div>
+                    <div id="catalogGridContainer" class="catalog-cards-grid">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
-    <!-- The Modal for PDF Report Details -->
-    <div id="pdfReportModal" class="modal">
-        <div class="modal-content">
-            <span class="close-btn">&times;</span>
-            <h2>PDF Report Details</h2>
-            <form id="pdfReportForm">
-                <label for="caseNumber">Case Number:</label>
-                <input type="text" id="caseNumber" name="caseNumber">
-                <label for="evidenceNumber">Evidence Number:</label>
-                <input type="text" id="evidenceNumber" name="evidenceNumber">
-                <label for="uniqueDescription">Unique Description:</label>
-                <input type="text" id="uniqueDescription" name="uniqueDescription">
-                <label for="examiner">Examiner:</label>
-                <input type="text" id="examiner" name="examiner">
-                <label for="notes">Notes:</label>
-                <textarea id="notes" name="notes" rows="4"></textarea>
-                <button type="submit" id="generatePdfBtn">Generate PDF</button>
-            </form>
+    <!-- PDF REPORT CONFIGURATION MODAL -->
+    <div id="pdfModal" class="dfir-modal">
+        <div class="dfir-modal-card card-glass">
+            <div class="modal-header">
+                <h3>📑 Generate Forensic Audit PDF Report</h3>
+                <span class="modal-close" id="closePdfModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="pdfConfigForm" class="modal-form">
+                    <div class="form-row">
+                        <div class="form-col">
+                            <label>Case Identifier:</label>
+                            <input type="text" id="caseNum" name="caseNumber" value="CASE-2026-0825-IR" required>
+                        </div>
+                        <div class="form-col">
+                            <label>Evidence Number:</label>
+                            <input type="text" id="evidenceNum" name="evidenceNumber" value="EVID-001-WIN11-SYS">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-col">
+                            <label>Lead Forensic Examiner:</label>
+                            <input type="text" id="examinerName" name="examiner" placeholder="e.g. Senior Incident Responder">
+                        </div>
+                        <div class="form-col">
+                            <label>Investigation Title / Scope:</label>
+                            <input type="text" id="caseScope" name="uniqueDescription" value="User Activity & Execution Reconstruction">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Examiner Findings & Executive Summary:</label>
+                        <textarea id="caseNotes" name="notes" rows="3" placeholder="Enter findings summary, key IOCs, or acquisition notes..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block btn-pulse">
+                        <span class="btn-icon">⚡</span> Generate Publication-Ready PDF Report
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 

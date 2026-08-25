@@ -8,3 +8,4 @@ Pillow
 reportlab
 psutil
 matplotlib
+pytest

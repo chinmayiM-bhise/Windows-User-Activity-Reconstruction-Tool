@@ -3,60 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Correlation Results</title>
+    <title>AegisDFIR - Forensic Timeline & Correlation</title>
     <link rel="icon" href="logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <img src="logo.png" alt="Logo" class="header-logo">
-            <h1 class="centered-title">Correlations / Timeline</h1>
-            <div class="theme-switch-wrapper">
-                <label class="theme-switch" for="theme-toggle">
-                    <input type="checkbox" id="theme-toggle" />
-                    <div class="slider"></div>
-                </label>
+<body data-theme="dark">
+    <div class="app-wrapper">
+        <header class="app-header">
+            <div class="header-brand">
+                <img src="logo.png" alt="Logo" class="app-logo" onerror="this.style.display='none'">
+                <div class="brand-text">
+                    <div class="brand-title">AEGIS<span>DFIR</span> | Correlation & Session Timeline</div>
+                    <div class="brand-subtitle">Reconstructed Cross-Artifact Forensic Sequence Analysis</div>
+                </div>
             </div>
-        </div>
-        <div class="table-section">
-            <table id="correlationsTable">
-                <thead>
-                    <tr>
-                        <th>Timestamp</th>
-                        <th>Artifact Type</th>
-                        <th>Detail</th>
-                        <th>Anomaly</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Correlations will be loaded here -->
-                </tbody>
-            </table>
-        </div>
-        <div class="bottom-bar">
-            <button id="exportCorrelationPdfBtn">Export Correlation PDF</button>
-        </div>
+            <div class="header-actions">
+                <div class="theme-switch-container">
+                    <label class="theme-toggle-label" title="Toggle Dark/Light Mode">
+                        <input type="checkbox" id="theme-toggle" checked />
+                        <span class="theme-toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <!-- Status & Summary Row -->
+            <section class="control-panel card-glass">
+                <div class="panel-row">
+                    <div class="primary-actions">
+                        <span class="filter-label">Timeline Mode:</span>
+                        <button class="pill-btn active" id="filterAllSessions">All Sessions</button>
+                        <button class="pill-btn" id="filterAnomaliesOnly">🚨 Anomalies Only</button>
+                    </div>
+                    <div class="custom-path-group" style="max-width: 400px;">
+                        <input type="text" id="timelineSearchInput" class="styled-input" placeholder="Search events, executables, MITRE tactics...">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status Banner -->
+            <div id="statusSection" class="status-banner"></div>
+
+            <!-- Timeline Data Table -->
+            <section class="data-table-container card-glass">
+                <div class="table-toolbar">
+                    <div class="table-counts" id="correlationCount">Loading timeline sessions...</div>
+                </div>
+                <div class="table-scroll-wrap">
+                    <table id="correlationsTable" class="styled-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 175px;">Timestamp (UTC)</th>
+                                <th style="width: 80px;">Session</th>
+                                <th style="width: 150px;">Artifact Type</th>
+                                <th>Forensic Reconstruction Detail</th>
+                                <th style="width: 240px;">Threat Indicators & MITRE ATT&CK</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Loaded dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <footer class="app-footer card-glass">
+                <div class="footer-left">
+                    <button class="btn btn-secondary" onclick="window.close()">
+                        <span>←</span> Back to Main Dashboard
+                    </button>
+                    <button id="refreshCorrBtn" class="btn btn-secondary">
+                        <span class="btn-icon">🔄</span> Re-analyze Timeline
+                    </button>
+                </div>
+                <div class="footer-right">
+                    <button id="exportCorrelationPdfBtn" class="btn btn-primary btn-glow">
+                        <span class="btn-icon">📑</span> Export Correlation PDF Report
+                    </button>
+                </div>
+            </footer>
+        </main>
     </div>
 
-    <!-- The Modal for PDF Report Details -->
+    <!-- PDF Report Modal -->
     <div id="pdfReportModal" class="modal">
-        <div class="modal-content">
-            <span class="close-btn">&times;</span>
-            <h2>PDF Report Details</h2>
-            <form id="pdfReportForm">
-                <label for="caseNumber">Case Number:</label>
-                <input type="text" id="caseNumber" name="caseNumber">
-                <label for="evidenceNumber">Evidence Number:</label>
-                <input type="text" id="evidenceNumber" name="evidenceNumber">
-                <label for="uniqueDescription">Unique Description:</label>
-                <input type="text" id="uniqueDescription" name="uniqueDescription">
-                <label for="examiner">Examiner:</label>
-                <input type="text" id="examiner" name="examiner">
-                <label for="notes">Notes:</label>
-                <textarea id="notes" name="notes" rows="4"></textarea>
-                <button type="submit" id="generatePdfBtn">Generate PDF</button>
-            </form>
+        <div class="modal-content card-glass modal-md">
+            <div class="modal-header">
+                <h3>📑 Correlation PDF Report Configuration</h3>
+                <span class="close-btn" id="closePdfBtn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="pdfReportForm" class="styled-form">
+                    <div class="form-group">
+                        <label for="caseNumber">Case Identifier:</label>
+                        <input type="text" id="caseNumber" name="caseNumber" placeholder="e.g. CASE-2026-0825-IR" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="evidenceNumber">Evidence Item Number:</label>
+                        <input type="text" id="evidenceNumber" name="evidenceNumber" placeholder="e.g. EVID-001-WIN11-SYS">
+                    </div>
+                    <div class="form-group">
+                        <label for="examiner">Forensic Examiner Name:</label>
+                        <input type="text" id="examiner" name="examiner" placeholder="e.g. Lead DFIR Analyst">
+                    </div>
+                    <div class="form-group">
+                        <label for="uniqueDescription">Scope / Subject:</label>
+                        <input type="text" id="uniqueDescription" name="uniqueDescription" placeholder="e.g. Temporal Activity & Threat Reconstruction">
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes:</label>
+                        <textarea id="notes" name="notes" rows="3" placeholder="Enter findings summary..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Generate Correlation PDF</button>
+                </form>
+            </div>
         </div>
     </div>
 

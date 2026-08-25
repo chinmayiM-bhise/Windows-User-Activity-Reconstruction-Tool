@@ -1,508 +1,648 @@
 # main.py
 """
-Main GUI and orchestration for Windows Artifacts Parser.
-Includes:
-- parsing flows for prefetch/lnk/recycle/shellbags (calls out to parsers modules)
-- DB integration (uses open_db/execute_with_retry if available)
-- Report generation (PDF) with charts
-- CSV export
+AegisDFIR - Windows Forensic Artifacts Parser & User Activity Reconstruction Desktop GUI.
+Enterprise-grade multi-pane native forensic workstation (Autopsy / Magnet AXIOM style)
+featuring 1-Click Live Triage, Auto-Discovery Scanners, Real-Time Evidence Inspector,
+Embedded Visual Analytics (Matplotlib), and Multi-Vector Timeline Correlation.
 """
 
 import os
+import sys
 import sqlite3
 import threading
+import json
+import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import csv
-import tempfile
-import getpass
-import platform
-import socket
-import datetime
-import hashlib
-import matplotlib
+from typing import Dict, List, Any, Optional
 
-# Use Agg backend for non-GUI chart rendering
-matplotlib.use("Agg")
+import matplotlib
+matplotlib.use("TkAgg")
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 
-# Try to import db_utils either in package or root
 try:
-    from db.db_utils import open_db, execute_with_retry
-except Exception:
-    try:
-        from db_utils import open_db, execute_with_retry
-    except Exception:
-        open_db = None
-        execute_with_retry = None
+    from db.db_utils import open_db
+    from db.schema import init_db, query_artifacts, clear_database
+except ImportError:
+    from db_utils import open_db
+    from schema import init_db, query_artifacts, clear_database
 
-# Import parsers and schema (try package imports then fallbacks)
-try:
-    from parsers import report_gen, prefetch_parser, lnk_parser, recycle_parser, shellbags_parser
-except Exception:
-    # fallback: maybe modules are at top-level
-    import report_gen
-    import prefetch_parser
-    import lnk_parser
-    import recycle_parser
-    import shellbags_parser
-
-# schema functions - attempt package then fallback
-try:
-    from db.schema import init_db, insert_artifact, query_artifacts, insert_artifacts_bulk
-except Exception:
-    try:
-        from schema import init_db, insert_artifact, query_artifacts, insert_artifacts_bulk
-    except Exception:
-        # Last resort: import db.schema as module
-        import db.schema as schema
-        init_db = schema.init_db
-        insert_artifact = schema.insert_artifact
-        query_artifacts = schema.query_artifacts
-        insert_artifacts_bulk = schema.insert_artifacts_bulk
+from parsers import path_resolver
+from correlator import correlate_artifacts
+import core_logic
 
 DB_PATH = "artifacts.db"
-TOOL_VERSION = "v1.2.4"
+TOOL_VERSION = "v1.3.0"
 
+# Forensic Theme Palette (Dark Lab / Terminal Theme)
+THEME = {
+    "bg_base": "#0B0E14",
+    "bg_surface": "#111622",
+    "bg_elevated": "#161D2C",
+    "bg_highlight": "#1E283C",
+    "bg_selected": "#1B3A4B",
+    "text_primary": "#F0F4FC",
+    "text_secondary": "#94A3B8",
+    "text_muted": "#64748B",
+    "cyan_accent": "#00E5FF",
+    "blue_accent": "#38BDF8",
+    "green_accent": "#22C55E",
+    "red_accent": "#EF4444",
+    "purple_accent": "#A855F7",
+    "border": "#212C3D",
+}
 
-def _sha256_file(path):
-    try:
-        h = hashlib.sha256()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                h.update(chunk)
-        return h.hexdigest()
-    except Exception:
-        return ""
-
-
-def build_metadata(db_path: str) -> dict:
-    meta = {}
-    try:
-        meta["Examiner"] = getpass.getuser()
-    except Exception:
-        meta["Examiner"] = ""
-    try:
-        meta["Source"] = socket.gethostname()
-    except Exception:
-        meta["Source"] = ""
-    meta["OS"] = f"{platform.system()} {platform.release()} ({platform.version()})"
-    meta["Tool Version"] = TOOL_VERSION
-    meta["Generated"] = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-    meta["DB SHA256"] = _sha256_file(db_path)
-    meta["Case ID"] = ""
-    meta["Notes"] = ""
-    return meta
-
-
-def _make_counts_chart(rows, outpath):
-    types = [r.get("artifact_type") or "unknown" for r in rows]
-    counts = {}
-    for t in types:
-        counts[t] = counts.get(t, 0) + 1
-    items = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-    labels = [i[0] for i in items]
-    values = [i[1] for i in items]
-
-    fig, ax = plt.subplots(figsize=(6.5, 2.6), dpi=150)
-    color_count = max(1, len(labels))
-    try:
-        colors_map = plt.cm.Set2.colors
-        color_list = colors_map[:color_count]
-    except Exception:
-        color_list = None
-
-    bars = ax.bar(range(len(labels)), values, color=color_list)
-    ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
-    ax.set_ylabel("Count")
-    ax.set_title("Artifact counts by type")
-    ax.grid(axis="y", linestyle="--", alpha=0.3)
-    for rect in bars:
-        height = rect.get_height()
-        ax.annotate(str(int(height)), xy=(rect.get_x() + rect.get_width() / 2, height), xytext=(0, 2), textcoords="offset points", ha="center", va="bottom", fontsize=7)
-    plt.tight_layout()
-    fig.savefig(outpath, bbox_inches="tight")
-    plt.close(fig)
-
-
-def _make_timeline_histogram(rows, outpath):
-    times = []
-    for r in rows:
-        t = r.get("timestamp") or r.get("last_access")
-        if not t:
-            continue
-        try:
-            s = t
-            if s.endswith("Z"):
-                s = s[:-1]
-            dt = datetime.datetime.fromisoformat(s)
-            times.append(dt)
-        except Exception:
-            continue
-
-    if not times:
-        fig, ax = plt.subplots(figsize=(6.5, 2.6), dpi=150)
-        ax.text(0.5, 0.5, "No timestamp data available for timeline", ha="center", va="center", fontsize=10)
-        ax.axis("off")
-        fig.savefig(outpath, bbox_inches="tight")
-        plt.close(fig)
-        return
-
-    timestamps = [dt.timestamp() for dt in times]
-    fig, ax = plt.subplots(figsize=(6.5, 2.6), dpi=150)
-    ax.hist(timestamps, bins=24, color="#5DA5A4", edgecolor="white")
-    ax.set_title("Events over time (histogram)")
-    xlocs = ax.get_xticks()
-    xlabels = [datetime.datetime.utcfromtimestamp(x).strftime("%Y-%m-%d\n%H:%M") for x in xlocs]
-    ax.set_xticklabels(xlabels, rotation=45, ha="right", fontsize=7)
-    ax.set_xlabel("UTC")
-    ax.set_ylabel("Events")
-    ax.grid(axis="y", linestyle="--", alpha=0.3)
-    plt.tight_layout()
-    fig.savefig(outpath, bbox_inches="tight")
-    plt.close(fig)
-
-
-class App(tk.Tk):
+class AegisDFIRDesktopApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Windows Artifacts Parser")
-        self.geometry("1100x700")
-        self.resizable(True, True)
-        self.setup_styles()
+        self.title("AegisDFIR - Windows Forensic Analysis Workstation (v1.3)")
+        self.geometry("1340x840")
+        self.minsize(1080, 680)
+        
+        # State
+        self.all_artifacts: List[Dict[str, Any]] = []
+        self.filtered_artifacts: List[Dict[str, Any]] = []
+        self.active_category: str = "all"
+        self.sort_column: str = "id"
+        self.sort_ascending: bool = False
+        
         init_db(DB_PATH)
-        self.create_widgets()
+        self._configure_styles()
+        self._build_ui()
+        self.refresh_evidence_data()
 
-    def setup_styles(self):
+    def _configure_styles(self):
+        self.configure(background=THEME["bg_base"])
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except Exception:
             pass
-        BG_COLOR = "#FBFBFA"
-        TEXT_COLOR = "#090E0A"
-        MUTED_GREEN_GRAY = "#5C635B"
-        GOLD_ACCENT = "#B09861"
-        LIGHT_BEIGE_HOVER = "#CACDAE"
-        SEPARATOR_COLOR = "#EAEAEA"
-        self.configure(background=BG_COLOR)
-        style.configure(".", background=BG_COLOR, foreground=TEXT_COLOR, font=("Segoe UI", 9))
-        style.configure("TFrame", background=BG_COLOR)
-        style.configure("TLabel", background=BG_COLOR, foreground=TEXT_COLOR)
-        style.configure("TButton", background=GOLD_ACCENT, foreground=BG_COLOR, font=("Segoe UI", 9, "bold"), borderwidth=0, padding=(14, 8))
-        style.map("TButton", background=[("active", LIGHT_BEIGE_HOVER), ("hover", MUTED_GREEN_GRAY)], foreground=[("active", TEXT_COLOR), ("hover", BG_COLOR)])
-        style.configure("TEntry", fieldbackground="#FFFFFF", foreground=TEXT_COLOR, insertcolor=TEXT_COLOR, bordercolor=SEPARATOR_COLOR, borderwidth=1, padding=8)
-        style.configure("Treeview", rowheight=30, fieldbackground=BG_COLOR, background=BG_COLOR, foreground=TEXT_COLOR, borderwidth=0, relief="flat")
-        style.configure("Treeview.Heading", background=BG_COLOR, foreground=MUTED_GREEN_GRAY, font=("Segoe UI", 10, "bold"), padding=(10, 10), relief="flat", bordercolor=SEPARATOR_COLOR, borderwidth=1)
-        self.tree_tags = {"odd": BG_COLOR, "even": "#F5F5F5", "hover": LIGHT_BEIGE_HOVER}
 
-    def create_widgets(self):
-        main_frame = ttk.Frame(self, padding=(20, 10))
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        title_label = ttk.Label(main_frame, text="Windows Artifacts Parser", font=("Segoe UI", 20, "bold"), anchor="w")
-        title_label.pack(fill=tk.X, pady=(0, 20))
-        top = ttk.Frame(main_frame)
-        top.pack(fill=tk.X, pady=(0, 15))
-        self.path_var = tk.StringVar()
-        entry = ttk.Entry(top, textvariable=self.path_var)
-        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
-        ttk.Button(top, text="Browse...", command=self.browse_folder).pack(side=tk.LEFT, padx=(8, 4))
-        ttk.Button(top, text="Parse Folder", command=self.parse_selected).pack(side=tk.LEFT, padx=4)
-        ttk.Button(top, text="Parse ShellBags", command=self.parse_shellbags).pack(side=tk.LEFT, padx=4)
-        tree_container = ttk.Frame(main_frame)
-        tree_container.pack(fill=tk.BOTH, expand=True)
-        cols = ("id", "type", "name", "path", "timestamp", "last_access", "extra")
-        self.tree = ttk.Treeview(tree_container, columns=cols, show="headings")
-        self.tree.tag_configure("oddrow", background=self.tree_tags["odd"])
-        self.tree.tag_configure("evenrow", background=self.tree_tags["even"])
-        self.tree.tag_configure("hover", background=self.tree_tags["hover"])
-        self._hovered_item = None
-        self.tree.bind("<Motion>", self._on_hover)
-        self.tree.bind("<Leave>", self._on_leave)
-        for c in cols:
-            self.tree.heading(c, text=c.capitalize(), anchor=tk.W)
-            self.tree.column(c, width=150 if c not in ("extra", "path") else 300, anchor=tk.W)
-        vsb = ttk.Scrollbar(tree_container, orient="vertical", command=self.tree.yview)
-        hsb = ttk.Scrollbar(tree_container, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        hsb.pack(side=tk.BOTTOM, fill=tk.X)
-        self.tree.pack(fill=tk.BOTH, expand=True)
-        bottom = ttk.Frame(main_frame)
-        bottom.pack(fill=tk.X, pady=(15, 0))
-        ttk.Button(bottom, text="Correlate / Timeline", command=self.open_correlator).pack(side=tk.LEFT)
-        ttk.Button(bottom, text="Refresh", command=self.refresh_view).pack(side=tk.LEFT, padx=6)
-        ttk.Button(bottom, text="Export to CSV", command=self.export_to_csv).pack(side=tk.LEFT, padx=6)
-        ttk.Button(bottom, text="Export PDF Report", command=self.export_pdf_report).pack(side=tk.LEFT, padx=6)
-        ttk.Button(bottom, text="Export Correlation PDF", command=lambda: self.export_correlation_pdf(None)).pack(side=tk.LEFT, padx=6)
-        ttk.Button(bottom, text="Clear DB", command=self.clear_db).pack(side=tk.LEFT)
-        ttk.Button(bottom, text="Exit", command=self.destroy).pack(side=tk.RIGHT)
-        self.refresh_view()
+        # Global Config
+        style.configure(".", background=THEME["bg_base"], foreground=THEME["text_primary"], font=("Segoe UI", 9))
+        style.configure("TFrame", background=THEME["bg_base"])
+        style.configure("Surface.TFrame", background=THEME["bg_surface"])
+        style.configure("Elevated.TFrame", background=THEME["bg_elevated"])
+        style.configure("TLabel", background=THEME["bg_base"], foreground=THEME["text_primary"])
+        style.configure("Surface.TLabel", background=THEME["bg_surface"], foreground=THEME["text_primary"])
+        style.configure("Muted.TLabel", background=THEME["bg_surface"], foreground=THEME["text_muted"], font=("Segoe UI", 8))
+        style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"), foreground=THEME["cyan_accent"], background=THEME["bg_surface"])
 
-    # --- GUI hover helpers ---
-    def _on_hover(self, event):
-        item = self.tree.identify_row(event.y)
-        if item != self._hovered_item:
-            if self._hovered_item:
-                tags = list(self.tree.item(self._hovered_item, "tags"))
-                if "hover" in tags:
-                    tags.remove("hover")
-                    self.tree.item(self._hovered_item, tags=tags)
-            if item:
-                tags = list(self.tree.item(item, "tags"))
-                if "hover" not in tags:
-                    tags.append("hover")
-                self.tree.item(item, tags=tags)
-            self._hovered_item = item
+        # Buttons
+        style.configure("TButton", background=THEME["bg_elevated"], foreground=THEME["text_primary"], borderwidth=1, bordercolor=THEME["border"], padding=(8, 4))
+        style.map("TButton", background=[("active", THEME["bg_highlight"]), ("hover", THEME["bg_highlight"])], foreground=[("active", THEME["cyan_accent"])])
 
-    def _on_leave(self, event):
-        if self._hovered_item:
-            tags = list(self.tree.item(self._hovered_item, "tags"))
-            if "hover" in tags:
-                tags.remove("hover")
-                self.tree.item(self._hovered_item, tags=tags)
-        self._hovered_item = None
+        style.configure("Primary.TButton", background=THEME["cyan_accent"], foreground="#000000", font=("Segoe UI", 9, "bold"), borderwidth=0, padding=(10, 5))
+        style.map("Primary.TButton", background=[("active", "#38BDF8"), ("hover", "#38BDF8")])
 
-    # --- file/folder handling ---
-    def browse_folder(self):
-        d = filedialog.askdirectory(title="Select Folder Containing Artifacts")
-        if d:
-            self.path_var.set(d)
+        style.configure("Export.TButton", background=THEME["green_accent"], foreground="#FFFFFF", font=("Segoe UI", 9, "bold"), borderwidth=0, padding=(10, 5))
+        style.map("Export.TButton", background=[("active", "#16A34A"), ("hover", "#16A34A")])
 
-    def parse_selected(self):
-        folder = self.path_var.get().strip()
-        if not folder or not os.path.isdir(folder):
-            messagebox.showerror("Error", "Please choose a valid directory to parse.")
-            return
-        threading.Thread(target=self._parse_folder, args=(folder,), daemon=True).start()
-        messagebox.showinfo("Parsing Started", "Parsing in background. Click Refresh when finished.")
+        # Inputs & Comboboxes
+        style.configure("TEntry", fieldbackground=THEME["bg_elevated"], foreground=THEME["text_primary"], insertcolor=THEME["cyan_accent"], bordercolor=THEME["border"], padding=4)
+        style.configure("TCombobox", fieldbackground=THEME["bg_elevated"], foreground=THEME["text_primary"], selectbackground=THEME["bg_highlight"], selectforeground=THEME["text_primary"], bordercolor=THEME["border"])
+        style.map("TCombobox", fieldbackground=[("readonly", THEME["bg_elevated"])], foreground=[("readonly", THEME["text_primary"])])
 
-    def _parse_folder(self, folder):
-        conn = None
-        if open_db:
-            conn = open_db(DB_PATH)
+        # Treeview / Data Grid
+        style.configure("Treeview", background=THEME["bg_surface"], fieldbackground=THEME["bg_surface"], foreground=THEME["text_primary"], rowheight=26, borderwidth=0)
+        style.map("Treeview", background=[("selected", THEME["bg_selected"])], foreground=[("selected", THEME["cyan_accent"])])
+        style.configure("Treeview.Heading", background=THEME["bg_elevated"], foreground=THEME["text_secondary"], font=("Segoe UI", 9, "bold"), bordercolor=THEME["border"], padding=4)
+        style.map("Treeview.Heading", background=[("active", THEME["bg_highlight"])], foreground=[("active", THEME["cyan_accent"])])
+
+        # Notebook Tabs
+        style.configure("TNotebook", background=THEME["bg_surface"], borderwidth=0)
+        style.configure("TNotebook.Tab", background=THEME["bg_elevated"], foreground=THEME["text_secondary"], padding=(12, 4), font=("Segoe UI", 9, "bold"))
+        style.map("TNotebook.Tab", background=[("selected", THEME["bg_surface"])], foreground=[("selected", THEME["cyan_accent"])])
+
+    def _build_ui(self):
+        # Master Container
+        master_frame = ttk.Frame(self)
+        master_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 1. TOP HEADER & TELEMETRY BAR
+        header = ttk.Frame(master_frame, style="Surface.TFrame", padding=(14, 8))
+        header.pack(fill=tk.X)
+
+        hdr_left = ttk.Frame(header, style="Surface.TFrame")
+        hdr_left.pack(side=tk.LEFT)
+        ttk.Label(hdr_left, text="🛡️ AEGIS-DFIR", style="Header.TLabel").pack(side=tk.LEFT)
+        ttk.Label(hdr_left, text=" | Windows Forensic & Activity Reconstruction", font=("Segoe UI", 10, "bold"), foreground=THEME["text_secondary"], background=THEME["bg_surface"]).pack(side=tk.LEFT, padx=4)
+        ttk.Label(hdr_left, text="v1.3", font=("Segoe UI", 8, "bold"), foreground=THEME["text_muted"], background=THEME["bg_elevated"]).pack(side=tk.LEFT, padx=4)
+
+        hdr_right = ttk.Frame(header, style="Surface.TFrame")
+        hdr_right.pack(side=tk.RIGHT)
+        self.status_indicator = ttk.Label(hdr_right, text="● Host Analysis Ready", font=("Segoe UI", 9, "bold"), foreground=THEME["green_accent"], background=THEME["bg_surface"])
+        self.status_indicator.pack(side=tk.LEFT, padx=8)
+
+        self.db_sha_label = ttk.Label(hdr_right, text="DB SHA-256: Acquiring...", font=("Consolas", 8), foreground=THEME["cyan_accent"], background=THEME["bg_elevated"], padding=(6, 2))
+        self.db_sha_label.pack(side=tk.LEFT, padx=6)
+
+        # 2. ACQUISITION COMMAND BAR
+        acq_bar = ttk.Frame(master_frame, style="Elevated.TFrame", padding=(10, 6))
+        acq_bar.pack(fill=tk.X)
+
+        # 1-Click Live Triage
+        ttk.Button(acq_bar, text="⚡ 1-Click Live Triage", style="Primary.TButton", command=self.action_live_triage).pack(side=tk.LEFT, padx=(0, 6))
+
+        # Preset Dropdown
+        ttk.Label(acq_bar, text="Category Preset:", background=THEME["bg_elevated"], foreground=THEME["text_secondary"]).pack(side=tk.LEFT, padx=(4, 2))
+        self.preset_var = tk.StringVar()
+        self.preset_combo = ttk.Combobox(acq_bar, textvariable=self.preset_var, width=32, state="readonly")
+        self.preset_combo["values"] = [
+            "⚡ Full Live Triage (All 12 Artifacts)",
+            "🚀 Program Execution & Persistence",
+            "📁 File & Folder Knowledge",
+            "🌐 Web Browsers & Downloads",
+            "💻 PowerShell CLI History",
+            "🔌 USB Storage Devices",
+            "🛡️ Security & Windows Event Logs"
+        ]
+        self.preset_combo.current(0)
+        self.preset_combo.pack(side=tk.LEFT, padx=4)
+        ttk.Button(acq_bar, text="Run Preset", command=self.action_run_preset).pack(side=tk.LEFT, padx=(0, 10))
+
+        # Target Auto-Scanner
+        self.target_path_var = tk.StringVar()
+        target_entry = ttk.Entry(acq_bar, textvariable=self.target_path_var, width=32)
+        target_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 2))
+        ttk.Button(acq_bar, text="Browse...", command=self.action_browse_target).pack(side=tk.LEFT, padx=2)
+        ttk.Button(acq_bar, text="🔍 Auto-Scan Target", command=self.action_scan_target).pack(side=tk.LEFT, padx=(0, 10))
+
+        # Right Action Buttons
+        ttk.Button(acq_bar, text="📊 Visual Analytics", style="Primary.TButton", command=self.open_visual_analytics_modal).pack(side=tk.RIGHT, padx=3)
+        ttk.Button(acq_bar, text="⏱️ Timeline & Correlations", command=self.open_timeline_window).pack(side=tk.RIGHT, padx=3)
+        ttk.Button(acq_bar, text="📑 PDF Report", style="Export.TButton", command=self.action_export_pdf).pack(side=tk.RIGHT, padx=3)
+        ttk.Button(acq_bar, text="📄 CSV", command=self.action_export_csv).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(acq_bar, text="📦 JSON", command=self.action_export_json).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(acq_bar, text="🔄 Refresh", command=self.refresh_evidence_data).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(acq_bar, text="🗑️ Clear DB", command=self.action_clear_db).pack(side=tk.RIGHT, padx=2)
+
+        # 3. MAIN WORKSPACE (SPLIT: SIDEBAR TREE + DATA GRID + DOCKED INSPECTOR)
+        workspace = ttk.Frame(master_frame)
+        workspace.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        # LEFT SIDEBAR: EVIDENCE CATEGORY TREE (Autopsy style)
+        sidebar_frame = ttk.Frame(workspace, style="Surface.TFrame", width=220)
+        sidebar_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 4))
+        sidebar_frame.pack_propagate(False)
+
+        sb_header = ttk.Frame(sidebar_frame, style="Elevated.TFrame", padding=(8, 6))
+        sb_header.pack(fill=tk.X)
+        ttk.Label(sb_header, text="EVIDENCE TREE", font=("Segoe UI", 8, "bold"), foreground=THEME["text_muted"], background=THEME["bg_elevated"]).pack(side=tk.LEFT)
+        self.sidebar_total_badge = ttk.Label(sb_header, text="0", font=("Consolas", 8, "bold"), foreground=THEME["cyan_accent"], background=THEME["bg_elevated"])
+        self.sidebar_total_badge.pack(side=tk.RIGHT)
+
+        self.tree_categories = ttk.Treeview(sidebar_frame, show="tree", selectmode="browse")
+        self.tree_categories.pack(fill=tk.BOTH, expand=True, padx=2, pady=4)
+        self.tree_categories.bind("<<TreeviewSelect>>", self._on_category_select)
+        self._populate_category_tree()
+
+        # RIGHT MAIN PANE (VERTICAL PANED WINDOW: TABLE ON TOP, DOCKED INSPECTOR BELOW)
+        paned = ttk.PanedWindow(workspace, orient=tk.VERTICAL)
+        paned.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # TOP PANE: SEARCH TOOLBAR + MASTER TABLE
+        table_container = ttk.Frame(paned, style="Surface.TFrame")
+        paned.add(table_container, weight=3)
+
+        # Search & Filter Bar
+        search_bar = ttk.Frame(table_container, style="Surface.TFrame", padding=(6, 4))
+        search_bar.pack(fill=tk.X)
+
+        ttk.Label(search_bar, text="🔎 Instant Search:", background=THEME["bg_surface"], font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 4))
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda *args: self.filter_and_render_table())
+        search_entry = ttk.Entry(search_bar, textvariable=self.search_var, width=45)
+        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+
+        self.table_count_label = ttk.Label(search_bar, text="Showing 0 of 0", background=THEME["bg_surface"], foreground=THEME["text_secondary"], font=("Segoe UI", 8, "bold"))
+        self.table_count_label.pack(side=tk.RIGHT)
+
+        # Master Table
+        grid_frame = ttk.Frame(table_container)
+        grid_frame.pack(fill=tk.BOTH, expand=True)
+
+        cols = ("id", "type", "name", "path", "timestamp", "threat")
+        self.main_table = ttk.Treeview(grid_frame, columns=cols, show="headings", selectmode="browse")
+        
+        col_headers = {
+            "id": ("#", 50),
+            "type": ("Artifact Type", 140),
+            "name": ("Binary / Resource", 220),
+            "path": ("Source Path / Target / Command", 400),
+            "timestamp": ("Timestamp (UTC)", 160),
+            "threat": ("Threat Indicators", 160)
+        }
+        for col_id, (header_text, width) in col_headers.items():
+            self.main_table.heading(col_id, text=header_text, command=lambda c=col_id: self._sort_table_column(c))
+            self.main_table.column(col_id, width=width, anchor=tk.W)
+
+        self.main_table.tag_configure("threat", background="#3B1C1C", foreground="#FFA8A8")
+        self.main_table.tag_configure("normal", foreground=THEME["text_primary"])
+
+        v_scroll = ttk.Scrollbar(grid_frame, orient=tk.VERTICAL, command=self.main_table.yview)
+        h_scroll = ttk.Scrollbar(grid_frame, orient=tk.HORIZONTAL, command=self.main_table.xview)
+        self.main_table.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+
+        v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        self.main_table.pack(fill=tk.BOTH, expand=True)
+        self.main_table.bind("<<TreeviewSelect>>", self._on_artifact_select)
+
+        # BOTTOM PANE: DOCKED EVIDENCE DETAIL INSPECTOR (Autopsy / Magnet AXIOM Master-Detail)
+        inspector_frame = ttk.Frame(paned, style="Elevated.TFrame")
+        paned.add(inspector_frame, weight=2)
+
+        ins_header = ttk.Frame(inspector_frame, style="Surface.TFrame", padding=(8, 4))
+        ins_header.pack(fill=tk.X)
+        ttk.Label(ins_header, text="EVIDENCE DETAIL INSPECTOR", font=("Segoe UI", 9, "bold"), foreground=THEME["cyan_accent"], background=THEME["bg_surface"]).pack(side=tk.LEFT)
+        self.ins_selected_title = ttk.Label(ins_header, text="[No Item Selected]", font=("Segoe UI", 8), foreground=THEME["text_muted"], background=THEME["bg_surface"])
+        self.ins_selected_title.pack(side=tk.RIGHT)
+
+        # Inspector Tabs
+        self.ins_notebook = ttk.Notebook(inspector_frame)
+        self.ins_notebook.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        # TAB 1: OVERVIEW METADATA
+        tab_overview = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
+        self.ins_notebook.add(tab_overview, text="🏷️ Forensic Overview")
+
+        self.ins_lbl_type = ttk.Label(tab_overview, text="Artifact Type: -", font=("Segoe UI", 9, "bold"), foreground=THEME["cyan_accent"], background=THEME["bg_surface"])
+        self.ins_lbl_type.grid(row=0, column=0, sticky=tk.W, pady=2)
+
+        self.ins_lbl_time = ttk.Label(tab_overview, text="Timestamp (UTC): -", font=("Consolas", 9), foreground=THEME["blue_accent"], background=THEME["bg_surface"])
+        self.ins_lbl_time.grid(row=0, column=1, sticky=tk.W, pady=2, padx=20)
+
+        self.ins_lbl_name = ttk.Label(tab_overview, text="Resource Name: -", font=("Segoe UI", 9, "bold"), background=THEME["bg_surface"])
+        self.ins_lbl_name.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=2)
+
+        self.ins_lbl_path = ttk.Label(tab_overview, text="Full Path: -", font=("Consolas", 8), foreground=THEME["text_secondary"], background=THEME["bg_surface"])
+        self.ins_lbl_path.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
+
+        ttk.Label(tab_overview, text="Decoded Extra Attributes & Parameters:", font=("Segoe UI", 8, "bold"), foreground=THEME["text_muted"], background=THEME["bg_surface"]).grid(row=3, column=0, sticky=tk.W, pady=(8, 2))
+        self.ins_txt_extra = tk.Text(tab_overview, height=4, background=THEME["bg_elevated"], foreground=THEME["text_primary"], insertbackground=THEME["cyan_accent"], borderwidth=0, font=("Consolas", 8), wrap=tk.WORD)
+        self.ins_txt_extra.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=2)
+
+        tab_overview.columnconfigure(0, weight=1)
+        tab_overview.columnconfigure(1, weight=1)
+        tab_overview.rowconfigure(4, weight=1)
+
+        # TAB 2: THREAT & MITRE CONTEXT
+        tab_threat = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
+        self.ins_notebook.add(tab_threat, text="🛡️ Threat & MITRE ATT&CK Context")
+        self.ins_txt_threat = tk.Text(tab_threat, background=THEME["bg_elevated"], foreground=THEME["red_accent"], insertbackground=THEME["cyan_accent"], borderwidth=0, font=("Consolas", 9), wrap=tk.WORD)
+        self.ins_txt_threat.pack(fill=tk.BOTH, expand=True)
+
+        # TAB 3: RAW JSON
+        tab_json = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
+        self.ins_notebook.add(tab_json, text="💻 Raw Forensic JSON")
+        self.ins_txt_json = tk.Text(tab_json, background="#07090E", foreground=THEME["blue_accent"], insertbackground=THEME["cyan_accent"], borderwidth=0, font=("Consolas", 8), wrap=tk.NONE)
+        self.ins_txt_json.pack(fill=tk.BOTH, expand=True)
+
+    def _populate_category_tree(self):
+        for item in self.tree_categories.get_children():
+            self.tree_categories.delete(item)
+
+        self.cat_map = [
+            ("all", "📦 All Evidence Items"),
+            ("threats", "🚨 Threat & Anomaly Flags"),
+            ("prefetch", "🚀 Prefetch (.pf)"),
+            ("userassist", "👤 UserAssist (ROT13)"),
+            ("bam", "⚙️ BAM / DAM Kernel"),
+            ("startup", "🔄 Startup & Persistence"),
+            ("lnk", "🔗 LNK Shortcuts"),
+            ("shellbag", "📂 Explorer ShellBags"),
+            ("jumplist", "📋 Jump Lists"),
+            ("recycle", "🗑️ Recycle Bin ($I/$R)"),
+            ("browser", "🌐 Web URLs & History"),
+            ("download", "📥 Browser Downloads"),
+            ("powershell", "💻 PowerShell History"),
+            ("usb", "🔌 USB & Storage Devices"),
+            ("event", "🛡️ Security Event Logs")
+        ]
+        for cat_id, cat_name in self.cat_map:
+            self.tree_categories.insert("", tk.END, iid=cat_id, text=cat_name)
+
+        self.tree_categories.selection_set("all")
+
+    def _on_category_select(self, event):
+        sel = self.tree_categories.selection()
+        if sel:
+            self.active_category = sel[0]
+            self.filter_and_render_table()
+
+    def refresh_evidence_data(self):
+        self.status_indicator.config(text="● Querying Evidence DB...", foreground=THEME["cyan_accent"])
+        self.all_artifacts = [dict(r) for r in query_artifacts(DB_PATH)]
+        stats = core_logic.get_stats_core()
+        
+        self.sidebar_total_badge.config(text=str(len(self.all_artifacts)))
+        sha = stats.get("db_sha256", "N/A")
+        self.db_sha_label.config(text=f"DB SHA-256: {sha[:16]}..." if len(sha) > 16 else f"DB SHA-256: {sha}")
+        self.status_indicator.config(text=f"● Indexed {len(self.all_artifacts):,} Items ({stats.get('anomalies_detected', 0)} Flags)", foreground=THEME["green_accent"])
+        self.filter_and_render_table()
+
+    def filter_and_render_table(self):
+        q = self.search_var.get().strip().lower()
+        self.filtered_artifacts = []
+
+        for art in self.all_artifacts:
+            # 1. Category Filter
+            t = (art.get("artifact_type") or "").lower()
+            extra = (art.get("extra") or "").lower()
+
+            if self.active_category == "threats":
+                if not (("threat_tag" in extra) or ("critical" in extra) or ("tampering" in extra) or ("1102" in extra)):
+                    continue
+            elif self.active_category == "prefetch" and "prefetch" not in t: continue
+            elif self.active_category == "userassist" and "userassist" not in t: continue
+            elif self.active_category == "bam" and "bam" not in t: continue
+            elif self.active_category == "startup" and "startup" not in t: continue
+            elif self.active_category == "lnk" and "lnk" not in t: continue
+            elif self.active_category == "shellbag" and "shellbag" not in t: continue
+            elif self.active_category == "jumplist" and "jumplist" not in t: continue
+            elif self.active_category == "recycle" and "recycle" not in t: continue
+            elif self.active_category == "browser" and "browser_url" not in t: continue
+            elif self.active_category == "download" and "browser_download" not in t: continue
+            elif self.active_category == "powershell" and "powershell" not in t: continue
+            elif self.active_category == "usb" and "usb" not in t: continue
+            elif self.active_category == "event" and not ("event" in t or "logon" in t): continue
+
+            # 2. Search Filter
+            if q:
+                match_blob = f"{art.get('name', '')} {art.get('path', '')} {art.get('artifact_type', '')} {art.get('extra', '')} {art.get('timestamp', '')}".lower()
+                if q not in match_blob:
+                    continue
+
+            self.filtered_artifacts.append(art)
+
+        # 3. Sorting
+        def sort_key(x):
+            val = x.get(self.sort_column) or ""
+            return str(val).lower()
+
+        self.filtered_artifacts.sort(key=sort_key, reverse=not self.sort_ascending)
+
+        # 4. Render Rows
+        for r in self.main_table.get_children():
+            self.main_table.delete(r)
+
+        self.table_count_label.config(text=f"Showing {len(self.filtered_artifacts):,} of {len(self.all_artifacts):,} items")
+
+        for art in self.filtered_artifacts[:1000]:  # Up to 1000 for smooth desktop performance
+            extra_str = art.get("extra") or ""
+            is_threat = ("threat_tag" in extra_str.lower()) or ("critical" in extra_str.lower()) or ("tampering" in extra_str.lower()) or ("1102" in extra_str)
+            threat_txt = "🚨 Threat Flag" if is_threat else "Normal"
+            tag = "threat" if is_threat else "normal"
+
+            self.main_table.insert("", tk.END, iid=str(art.get("id")), values=(
+                art.get("id"),
+                art.get("artifact_type"),
+                art.get("name") or "Unnamed",
+                art.get("path") or "-",
+                art.get("timestamp") or art.get("last_access") or "-",
+                threat_txt
+            ), tags=(tag,))
+
+    def _sort_table_column(self, col):
+        if self.sort_column == col:
+            self.sort_ascending = not self.sort_ascending
         else:
-            conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        for root, _, files in os.walk(folder):
-            root_lower = root.lower()
-            for f in files:
-                path = os.path.join(root, f)
-                low = f.lower()
-                try:
-                    if low.endswith(".pf") or "prefetch" in root_lower:
-                        for rec in prefetch_parser.parse_prefetch(path):
-                            insert_artifact(conn, rec)
-                    elif low.endswith(".lnk"):
-                        for rec in lnk_parser.parse_lnk(path):
-                            insert_artifact(conn, rec)
-                    elif (low.startswith("$i") or low.startswith("i")) and ("$recycle.bin" in root_lower or "recycle.bin" in root_lower):
-                        for rec in recycle_parser.parse_i_file(path):
-                            insert_artifact(conn, rec)
-                except Exception as e:
-                    print(f"[!] Failed to parse {path}: {e}")
+            self.sort_column = col
+            self.sort_ascending = True
+        self.filter_and_render_table()
+
+    def _on_artifact_select(self, event):
+        sel = self.main_table.selection()
+        if not sel:
+            return
+        art_id = int(sel[0])
+        target = next((a for a in self.all_artifacts if a.get("id") == art_id), None)
+        if not target:
+            return
+
+        # Populate Docked Inspector
+        self.ins_selected_title.config(text=f"[ID {target.get('id')}] {target.get('name') or target.get('artifact_type')}")
+        self.ins_lbl_type.config(text=f"Artifact Type: {target.get('artifact_type', 'Unknown')}")
+        self.ins_lbl_time.config(text=f"Timestamp (UTC): {target.get('timestamp') or target.get('last_access') or 'N/A'}")
+        self.ins_lbl_name.config(text=f"Resource Name: {target.get('name') or 'N/A'}")
+        self.ins_lbl_path.config(text=f"Full Path: {target.get('path') or 'N/A'}")
+
+        self.ins_txt_extra.delete("1.0", tk.END)
+        self.ins_txt_extra.insert(tk.END, target.get("extra") or "None")
+
+        # Threat Context Tab
+        self.ins_txt_threat.delete("1.0", tk.END)
+        extra_str = target.get("extra") or ""
+        if "threat_tag" in extra_str.lower() or "critical" in extra_str.lower() or "tampering" in extra_str.lower():
+            self.ins_txt_threat.insert(tk.END, f"🚨 THREAT DETECTION TRIGGERED:\n\n{extra_str}\n\nRecommended Action: Correlate with session timeline to determine process ancestry and network connections.")
+        else:
+            self.ins_txt_threat.insert(tk.END, "No automated anomaly flags triggered for this forensic event.")
+
+        # Raw JSON Tab
+        self.ins_txt_json.delete("1.0", tk.END)
         try:
-            conn.commit()
+            details = target.get("details")
+            raw_data = json.loads(details) if isinstance(details, str) else (details or target)
+            self.ins_txt_json.insert(tk.END, json.dumps(raw_data, indent=2))
         except Exception:
-            pass
-        try:
-            conn.close()
-        except Exception:
-            pass
-        print("[+] Parsing complete.")
-        self.after(0, lambda: messagebox.showinfo("Parsing Complete", f"Finished parsing folder: {folder}"))
-        self.after(0, self.refresh_view)
+            self.ins_txt_json.insert(tk.END, json.dumps(target, indent=2))
 
-    # --- ShellBags parse worker ---
-    def parse_shellbags(self):
-        if hasattr(self, "_shellbags_thread") and self._shellbags_thread.is_alive():
-            messagebox.showwarning("ShellBags", "ShellBags parsing is already running.")
+    # --- FORENSIC ACTIONS ---
+    def action_live_triage(self):
+        self.status_indicator.config(text="● 1-Click Live Triage Running...", foreground=THEME["cyan_accent"])
+        threading.Thread(target=self._live_triage_worker, daemon=True).start()
+
+    def _live_triage_worker(self):
+        res = core_logic.parse_live_triage_core()
+        self.after(0, self.refresh_evidence_data)
+        self.after(0, lambda: messagebox.showinfo("Live Triage Complete", res.get("message", "Triage finished successfully.")))
+
+    def action_run_preset(self):
+        idx = self.preset_combo.current()
+        preset_map = {
+            0: "all_triage",
+            1: "execution_persistence",
+            2: "file_access",
+            3: "browser_downloads",
+            4: "powershell_cli",
+            5: "usb_storage",
+            6: "event_logs"
+        }
+        pid = preset_map.get(idx, "all_triage")
+        self.status_indicator.config(text=f"● Processing Preset '{pid}'...", foreground=THEME["cyan_accent"])
+        threading.Thread(target=lambda: self._preset_worker(pid), daemon=True).start()
+
+    def _preset_worker(self, pid):
+        res = core_logic.parse_preset_core(pid)
+        self.after(0, self.refresh_evidence_data)
+        self.after(0, lambda: messagebox.showinfo("Preset Complete", res.get("message", "Preset finished.")))
+
+    def action_browse_target(self):
+        d = filedialog.askdirectory(title="Select Target Folder or Mounted Forensic Image")
+        if d:
+            self.target_path_var.set(d)
+
+    def action_scan_target(self):
+        p = self.target_path_var.get().strip()
+        if not p or not os.path.isdir(p):
+            messagebox.showerror("Invalid Path", "Please enter a valid directory path or mounted drive.")
             return
-        self._shellbags_thread = threading.Thread(target=self._parse_shellbags_worker, daemon=True)
-        self._shellbags_thread.start()
-        messagebox.showinfo("ShellBags", "Parsing ShellBags in background. Click Refresh when finished.")
+        self.status_indicator.config(text=f"● Auto-Scanning '{p}'...", foreground=THEME["cyan_accent"])
+        threading.Thread(target=lambda: self._target_worker(p), daemon=True).start()
 
-    def _parse_shellbags_worker(self):
-        try:
-            records = shellbags_parser.parse_shellbags()
-            if not records:
-                self.after(0, lambda: messagebox.showinfo("ShellBags", "No ShellBag data found or insufficient privileges."))
-                return
-            conn = open_db(DB_PATH) if open_db else sqlite3.connect(DB_PATH)
-            insert_artifacts_bulk(conn, records)
-            try:
-                conn.commit()
-            except Exception:
-                pass
-            try:
-                conn.close()
-            except Exception:
-                pass
-            self.after(0, self.refresh_view)
-            self.after(0, lambda: messagebox.showinfo("ShellBags", f"Parsed and inserted {len(records)} ShellBag entries."))
-        except Exception as e:
-            err_text = f"Failed to parse ShellBags:\n{e}"
-            # capture err_text so lambda closure works
-            self.after(0, lambda msg=err_text: messagebox.showerror("Error", msg))
-            print(f"[!] ShellBags worker error: {e}")
+    def _target_worker(self, p):
+        res = core_logic.parse_target_folder_core(p)
+        self.after(0, self.refresh_evidence_data)
+        self.after(0, lambda: messagebox.showinfo("Target Scan Finished", res.get("message", "Scan complete.")))
 
-    # --- view / DB operations ---
-    def refresh_view(self):
-        for r in self.tree.get_children():
-            self.tree.delete(r)
-        rows = query_artifacts(DB_PATH)
-        for i, row in enumerate(rows):
-            row = dict(row)
-            tag = "evenrow" if i % 2 == 0 else "oddrow"
-            self.tree.insert("", tk.END, values=(row.get("id"), row.get("artifact_type"), row.get("name"), row.get("path"), row.get("timestamp"), row.get("last_access"), row.get("extra")), tags=(tag,))
+    def action_clear_db(self):
+        if messagebox.askyesno("Confirm Database Clear", "Are you sure you want to completely erase the forensic evidence database?"):
+            core_logic.clear_database_core()
+            self.refresh_evidence_data()
+            messagebox.showinfo("Database Cleared", "Evidence database has been wiped clean.")
 
-    def clear_db(self):
-        if messagebox.askyesno("Confirm", "Delete all artifacts from the database?"):
-            conn = open_db(DB_PATH) if open_db else sqlite3.connect(DB_PATH)
-            try:
-                if execute_with_retry:
-                    execute_with_retry(conn, "DELETE FROM artifacts")
-                else:
-                    cur = conn.cursor()
-                    cur.execute("DELETE FROM artifacts")
-                    conn.commit()
-            except Exception as e:
-                print(f"[!] Error clearing DB: {e}")
-            try:
-                conn.close()
-            except Exception:
-                pass
-            self.refresh_view()
+    def action_export_csv(self):
+        p = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")], title="Export Standard CSV Timeline")
+        if p:
+            res = core_logic.generate_csv_report(p)
+            messagebox.showinfo("CSV Exported", res.get("message", "Done."))
 
-    # --- CSV export (NEW method) ---
-    def export_to_csv(self):
-        """
-        Export all artifacts to CSV. Opens a SaveAs dialog for destination.
-        """
-        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")], title="Export artifacts as CSV")
-        if not path:
-            return
-        try:
-            rows = query_artifacts(DB_PATH)
-            # rows are sqlite.Row-like or dict-like
-            # Determine CSV header from keys of first row
-            if not rows:
-                messagebox.showinfo("Export CSV", "No artifacts to export.")
-                return
-            first = dict(rows[0])
-            headers = list(first.keys())
-            with open(path, "w", newline="", encoding="utf-8") as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(headers)
-                for r in rows:
-                    rowd = dict(r)
-                    writer.writerow([rowd.get(h) for h in headers])
-            messagebox.showinfo("Export CSV", f"Export complete: {path}")
-        except Exception as e:
-            messagebox.showerror("Export Error", f"Failed to export CSV:\n{e}")
+    def action_export_json(self):
+        p = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON files", "*.json")], title="Export DFIR Standard JSON Timeline")
+        if p:
+            res = core_logic.export_json_report(p)
+            messagebox.showinfo("JSON Exported", res.get("message", "Done."))
 
-    # --- PDF export with metadata + charts ---
-    def export_pdf_report(self):
-        file_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")], title="Export Artifacts Report as PDF")
-        if not file_path:
-            return
-        try:
-            rows = query_artifacts(DB_PATH)
-            metadata = build_metadata(DB_PATH)
-            tmp_dir = tempfile.mkdtemp(prefix="wab_report_")
-            counts_png = os.path.join(tmp_dir, "counts.png")
-            timeline_png = os.path.join(tmp_dir, "timeline.png")
-            _make_counts_chart(rows, counts_png)
-            _make_timeline_histogram(rows, timeline_png)
-            metadata["chart_counts"] = counts_png
-            metadata["chart_timeline"] = timeline_png
-            report_gen.generate_pdf_report(DB_PATH, file_path, title=f"Artifacts Report ({socket.gethostname()})", metadata=metadata)
-            messagebox.showinfo("Report Generated", f"PDF report successfully generated:\n{file_path}")
-        except Exception as e:
-            messagebox.showerror("Report Error", f"Failed to generate PDF report:\n{e}")
+    def action_export_pdf(self):
+        p = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title="Export Forensic Audit PDF Report")
+        if p:
+            meta = {
+                "caseNumber": "CASE-2026-DESKTOP",
+                "evidenceNumber": "EVID-001-WIN-HOST",
+                "examiner": os.environ.get("USERNAME", "Forensic Examiner"),
+                "uniqueDescription": "Windows User Activity & Attack Timeline Reconstruction",
+                "notes": "Automated forensic audit generated via AegisDFIR Workstation."
+            }
+            res = core_logic.generate_pdf_report_core(p, meta)
+            messagebox.showinfo("PDF Generated", res.get("message", "Done."))
 
-    def export_correlation_pdf(self, parent_window=None):
-        file_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")], title="Export Correlation Report to PDF", parent=parent_window)
-        if not file_path:
-            return
-        try:
-            rows = query_artifacts(DB_PATH)
-            metadata = build_metadata(DB_PATH)
-            tmp_dir = tempfile.mkdtemp(prefix="wab_corr_")
-            counts_png = os.path.join(tmp_dir, "counts_corr.png")
-            timeline_png = os.path.join(tmp_dir, "timeline_corr.png")
-            _make_counts_chart(rows, counts_png)
-            _make_timeline_histogram(rows, timeline_png)
-            metadata["chart_counts"] = counts_png
-            metadata["chart_timeline"] = timeline_png
-            report_gen.generate_correlation_pdf(DB_PATH, file_path, title=f"Correlation Report ({socket.gethostname()})", metadata=metadata)
-            messagebox.showinfo("Report Generated", f"Correlation PDF successfully generated:\n{file_path}")
-        except Exception as e:
-            messagebox.showerror("Report Error", f"Failed to generate correlation PDF:\n{e}")
+    # --- MODAL 1: VISUAL ANALYTICS (MATPLOTLIB IN TKINTER) ---
+    def open_visual_analytics_modal(self):
+        win = tk.Toplevel(self)
+        win.title("AegisDFIR - Visual Forensics & Analytics Dashboard")
+        win.geometry("1100x700")
+        win.configure(background=THEME["bg_surface"])
 
-    # --- Correlator UI ---
-    def open_correlator(self):
-        window = tk.Toplevel(self)
-        window.title("Correlations / Timeline")
-        window.geometry("1200x650")
-        window.configure(background="#FBFBFA")
-        main_frame = ttk.Frame(window, padding=10)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        toolbar = ttk.Frame(main_frame)
-        toolbar.pack(fill=tk.X, pady=(6, 8))
-        ttk.Button(toolbar, text="Export Correlation PDF", command=lambda: self.export_correlation_pdf(window)).pack(side=tk.LEFT)
-        cols = ("time", "artifact", "detail", "anomaly")
-        tree = ttk.Treeview(main_frame, columns=cols, show="headings", height=20)
-        tree.heading("time", text="Timestamp", anchor=tk.W)
-        tree.heading("artifact", text="Type", anchor=tk.W)
-        tree.heading("detail", text="Detail", anchor=tk.W)
-        tree.heading("anomaly", text="Anomaly", anchor=tk.W)
-        tree.column("time", width=180, anchor=tk.W)
-        tree.column("artifact", width=150, anchor=tk.W)
-        tree.column("detail", width=700, anchor=tk.W)
-        tree.column("anomaly", width=200, anchor=tk.W)
-        vsb = ttk.Scrollbar(main_frame, orient="vertical", command=tree.yview)
-        hsb = ttk.Scrollbar(main_frame, orient="horizontal", command=tree.xview)
-        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        fig = plt.Figure(figsize=(11, 7), facecolor=THEME["bg_surface"])
+        
+        # 1. Timeline Activity Bar
+        ax1 = fig.add_subplot(2, 2, (1, 2))
+        ax1.set_facecolor(THEME["bg_elevated"])
+        time_buckets = {}
+        for art in self.all_artifacts:
+            t = art.get("timestamp") or art.get("last_access")
+            if t and len(t) >= 10:
+                day = t[:10]
+                time_buckets[day] = time_buckets.get(day, 0) + 1
+
+        sorted_days = sorted(time_buckets.keys())
+        day_counts = [time_buckets[d] for d in sorted_days]
+        if sorted_days:
+            ax1.bar(sorted_days, day_counts, color=THEME["cyan_accent"], edgecolor=THEME["blue_accent"], alpha=0.8)
+            ax1.set_title("⏱️ Chronological Activity Density (Events Timeline)", color=THEME["text_primary"], fontsize=11, fontweight="bold")
+            ax1.tick_params(colors=THEME["text_secondary"], labelsize=8, rotation=30)
+        else:
+            ax1.text(0.5, 0.5, "No Timestamped Evidence Available", color=THEME["text_muted"], ha="center", va="center")
+
+        # 2. Category Donut
+        ax2 = fig.add_subplot(2, 2, 3)
+        ax2.set_facecolor(THEME["bg_surface"])
+        cat_counts = {}
+        for art in self.all_artifacts:
+            t = art.get("artifact_type") or "Unknown"
+            cat_counts[t] = cat_counts.get(t, 0) + 1
+
+        top_cats = sorted(cat_counts.items(), key=lambda x: x[1], reverse=True)[:6]
+        if top_cats:
+            ax2.pie([c[1] for c in top_cats], labels=[c[0] for c in top_cats], textprops={"color": THEME["text_primary"], "fontsize": 8},
+                    wedgeprops={"edgecolor": THEME["bg_surface"], "width": 0.5})
+            ax2.set_title("📦 Evidence Category Breakdown", color=THEME["text_primary"], fontsize=10, fontweight="bold")
+        else:
+            ax2.text(0.5, 0.5, "No Categories", color=THEME["text_muted"], ha="center", va="center")
+
+        # 3. Top Apps Bar
+        ax3 = fig.add_subplot(2, 2, 4)
+        ax3.set_facecolor(THEME["bg_elevated"])
+        app_counts = {}
+        for art in self.all_artifacts:
+            t = (art.get("artifact_type") or "").lower()
+            if "prefetch" in t or "userassist" in t or "bam" in t:
+                name = art.get("name") or "Unknown"
+                app_counts[name] = app_counts.get(name, 0) + 1
+
+        top_apps = sorted(app_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        if top_apps:
+            ax3.barh([a[0] for a in top_apps][::-1], [a[1] for a in top_apps][::-1], color=THEME["green_accent"], alpha=0.8)
+            ax3.set_title("🚀 Top Executed Applications", color=THEME["text_primary"], fontsize=10, fontweight="bold")
+            ax3.tick_params(colors=THEME["text_secondary"], labelsize=8)
+        else:
+            ax3.text(0.5, 0.5, "No Execution Records", color=THEME["text_muted"], ha="center", va="center")
+
+        fig.tight_layout(pad=2.0)
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    # --- MODAL 2: RECONSTRUCTED SESSION TIMELINE ---
+    def open_timeline_window(self):
+        win = tk.Toplevel(self)
+        win.title("AegisDFIR - Reconstructed Cross-Artifact Session Timeline")
+        win.geometry("1100x650")
+        win.configure(background=THEME["bg_surface"])
+
+        top_bar = ttk.Frame(win, style="Elevated.TFrame", padding=(10, 6))
+        top_bar.pack(fill=tk.X)
+
+        ttk.Label(top_bar, text="⏱️ Multi-Vector Correlated Event Sequence", font=("Segoe UI", 10, "bold"), foreground=THEME["cyan_accent"], background=THEME["bg_elevated"]).pack(side=tk.LEFT)
+
+        cols = ("time", "session", "type", "detail", "anomaly", "mitre")
+        timeline_tree = ttk.Treeview(win, columns=cols, show="headings", selectmode="browse")
+        
+        headers = {
+            "time": ("Timestamp (UTC)", 150),
+            "session": ("Session", 70),
+            "type": ("Artifact Type", 130),
+            "detail": ("Reconstructed Action Detail", 360),
+            "anomaly": ("Anomaly Indicator", 180),
+            "mitre": ("MITRE ATT&CK", 120)
+        }
+        for k, (txt, w) in headers.items():
+            timeline_tree.heading(k, text=txt)
+            timeline_tree.column(k, width=w)
+
+        timeline_tree.tag_configure("anomaly", background="#3B1C1C", foreground="#FFA8A8")
+
+        vsb = ttk.Scrollbar(win, orient=tk.VERTICAL, command=timeline_tree.yview)
+        timeline_tree.configure(yscrollcommand=vsb.set)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        hsb.pack(side=tk.BOTTOM, fill=tk.X)
-        tree.pack(fill=tk.BOTH, expand=True)
-        tree.tag_configure("evenrow", background="#F5F5F5")
-        tree.tag_configure("oddrow", background="#FBFBFA")
+        timeline_tree.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        # Attempt to import correlate_artifacts; support both styles
-        try:
-            from correlator import correlate_artifacts
-        except Exception:
-            try:
-                # maybe the function expects a DB connection
-                from correlator import correlate_artifacts
-            except Exception as e:
-                messagebox.showerror("Correlator Error", f"Failed to import correlator: {e}")
-                return
-
-        # correlate_artifacts may expect DB path or connection; handle both
-        rows = []
-        try:
-            rows = correlate_artifacts(DB_PATH)
-        except TypeError:
-            # assume it expects a sqlite3 connection
-            conn = sqlite3.connect(DB_PATH)
-            conn.row_factory = sqlite3.Row
-            try:
-                rows = correlate_artifacts(conn)
-            finally:
-                conn.close()
-        except Exception as e:
-            messagebox.showerror("Correlator Error", f"Correlator failed: {e}")
-            return
-
-        for i, r in enumerate(rows):
-            tag = "evenrow" if i % 2 == 0 else "oddrow"
-            tree.insert("", tk.END, values=(r.get("timestamp") or "", r.get("artifact_type") or "", r.get("detail") or "", r.get("anomaly") or ""), tags=(tag,))
-
+        corrs = core_logic.get_correlations_json()
+        for item in corrs:
+            has_anomaly = bool(item.get("anomaly"))
+            tag = "anomaly" if has_anomaly else ""
+            timeline_tree.insert("", tk.END, values=(
+                item.get("timestamp"),
+                f"S-{item.get('session', 1)}",
+                item.get("artifact_type"),
+                item.get("detail"),
+                item.get("anomaly") or "Normal",
+                item.get("mitre") or "-"
+            ), tags=(tag,) if tag else ())
 
 if __name__ == "__main__":
-    app = App()
+    app = AegisDFIRDesktopApp()
     app.mainloop()

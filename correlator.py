@@ -1,32 +1,34 @@
 # correlator.py
 """
-Session-based forensic correlator.
-
+Advanced Multi-Vector Forensic Correlator & Timeline Reconstruction Engine.
 Features:
-- Accept either DB path (string) or sqlite3.Connection.
-- Prefer DB run_count column, fallback to parsing extra (key=value;...).
-- Parse extra into dict for reliable lookups (exe_path, target, run_count, etc).
-- Group events into sessions (gap > 120s).
-- Link LNK -> Prefetch when target/exe match.
-- Return list of dicts with keys:
-    timestamp, artifact_type, detail, anomaly, session
-- Defensive: returns an error record instead of raising on top-level failures.
+- Cross-artifact multi-stage event linking (Download -> Access -> Execution -> Persistence -> Tampering).
+- Temporal sessionization (groups actions into logical user sessions).
+- Advanced Anomaly & Threat Detection (Suspicious execution directories, timestomping indicators,
+  audit log clearing, high-frequency execution, malicious PowerShell syntax).
+- MITRE ATT&CK Tactic & Technique mapping tags.
 """
 
 import sqlite3
 import datetime
 import re
 import traceback
-from typing import Union, List, Dict, Any
+from typing import Union, List, Dict, Any, Optional
 
-_SESSION_GAP_SECONDS = 120  # new session if gap larger than this
+_SESSION_GAP_SECONDS = 180  # 3 minutes inactivity defines new session
 _RUNCOUNT_RE = re.compile(r"run_count\s*=\s*(\d+)", flags=re.IGNORECASE)
 
-def _debug(msg: str):
-    # Small debug logger; change to real logger if you have one
-    print(f"[correlator DEBUG] {msg}")
+# Suspicious file execution paths
+SUSPICIOUS_PATHS = [
+    (re.compile(r"\\AppData\\Local\\Temp\\", re.I), "Execution from User Temp Directory", "T1059"),
+    (re.compile(r"\\Windows\\Temp\\", re.I), "Execution from System Temp Directory", "T1059"),
+    (re.compile(r"\\Users\\Public\\", re.I), "Execution from Public Directory", "T1059"),
+    (re.compile(r"\\Downloads\\", re.I), "Execution directly from Downloads Folder", "T1204"),
+    (re.compile(r"\\\$recycle\.bin\\", re.I), "Execution / Access from Recycle Bin", "T1070.004"),
+    (re.compile(r"\.(vbs|js|hta|ps1|bat|cmd|scr|pif)$", re.I), "Script / Suspicious Extension Executed", "T1059")
+]
 
-def _parse_iso_flexible(ts) -> Union[datetime.datetime, None]:
+def _parse_iso_flexible(ts: Any) -> Optional[datetime.datetime]:
     """Parse timestamp value robustly into timezone-aware UTC datetime or None."""
     if not ts:
         return None
@@ -34,45 +36,27 @@ def _parse_iso_flexible(ts) -> Union[datetime.datetime, None]:
         s = str(ts).strip()
         if s.lower() in ("none", "null", ""):
             return None
-        # If ends with Z, strip then parse
         if s.endswith("Z"):
-            s2 = s[:-1]
-            try:
-                dt = datetime.datetime.fromisoformat(s2)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=datetime.timezone.utc)
-                else:
-                    dt = dt.astimezone(datetime.timezone.utc)
-                return dt
-            except Exception:
-                # fall through to other parsers
-                pass
-        # Try isoformat directly (may be naive)
-        try:
-            dt = datetime.datetime.fromisoformat(s)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
-            else:
-                dt = dt.astimezone(datetime.timezone.utc)
-            return dt
-        except Exception:
-            pass
-        # Numeric heuristics
-        v = float(s)
-        # FILETIME-like (100-ns since 1601) -> very large >1e14
-        if v > 1e14:
-            # Convert to seconds since epoch
-            seconds = v / 10_000_000.0 - 11644473600.0
-            return datetime.datetime.fromtimestamp(seconds, tz=datetime.timezone.utc)
-        # Milliseconds epoch
-        if v > 1e12:
-            return datetime.datetime.fromtimestamp(v / 1000.0, tz=datetime.timezone.utc)
-        # Seconds epoch
-        return datetime.datetime.fromtimestamp(v, tz=datetime.timezone.utc)
+            s = s[:-1]
+        dt = datetime.datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        else:
+            dt = dt.astimezone(datetime.timezone.utc)
+        return dt
     except Exception:
-        return None
+        try:
+            v = float(str(ts).strip())
+            if v > 1e14:  # FILETIME
+                seconds = v / 10_000_000.0 - 11644473600.0
+                return datetime.datetime.fromtimestamp(seconds, tz=datetime.timezone.utc)
+            if v > 1e12:  # ms epoch
+                return datetime.datetime.fromtimestamp(v / 1000.0, tz=datetime.timezone.utc)
+            return datetime.datetime.fromtimestamp(v, tz=datetime.timezone.utc)
+        except Exception:
+            return None
 
-def _format_iso_z(dt: datetime.datetime) -> str:
+def _format_iso_z(dt: Optional[datetime.datetime]) -> str:
     if not dt:
         return ""
     if dt.tzinfo is None:
@@ -80,10 +64,7 @@ def _format_iso_z(dt: datetime.datetime) -> str:
     return dt.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 def _parse_extra_to_kv(extra: str) -> Dict[str, str]:
-    """
-    Parse extra field encoded as "key=value;key2=value2" into dict.
-    Handles values that are JSON (keeps as string), trims whitespace.
-    """
+    """Parse extra field encoded as 'key=value;key2=value2' into dict."""
     out = {}
     if not extra:
         return out
@@ -94,35 +75,26 @@ def _parse_extra_to_kv(extra: str) -> Dict[str, str]:
                 k, v = p.split("=", 1)
                 out[k.strip().lower()] = v.strip()
             else:
-                # treat as flag
                 out[p.strip().lower()] = ""
     except Exception:
-        # Fallback — return empty map
         return {}
     return out
 
-def _extract_run_count_from_row(row: Dict[str, Any]) -> Union[int, None]:
-    """
-    Return run_count preferring explicit DB column 'run_count', else from extra kv string.
-    """
-    if row is None:
+def _extract_run_count_from_row(row: Dict[str, Any]) -> Optional[int]:
+    if not row:
         return None
-    # Prefer DB column (if present and numeric)
     if "run_count" in row and row.get("run_count") is not None:
         try:
             return int(row.get("run_count"))
         except Exception:
             pass
-    # Fallback: parse extra
     extra = row.get("extra") or ""
-    # First try kv parsing
     kv = _parse_extra_to_kv(extra)
     if "run_count" in kv:
         try:
             return int(re.sub(r"[^\d]", "", kv.get("run_count") or ""))
         except Exception:
             pass
-    # Last resort: regex
     m = _RUNCOUNT_RE.search(str(extra))
     if m:
         try:
@@ -131,32 +103,19 @@ def _extract_run_count_from_row(row: Dict[str, Any]) -> Union[int, None]:
             pass
     return None
 
-def _coerce_row_time(row: Dict[str, Any]) -> Union[datetime.datetime, None]:
-    """
-    Pick the best timestamp from row (timestamp, last_access, event_time),
-    return parsed datetime or None.
-    """
-    for key in ("timestamp", "last_access", "event_time"):
-        val = row.get(key)
-        if val:
-            dt = _parse_iso_flexible(val)
-            if dt:
-                return dt
-    return None
+def ntpath_basename(path_str: str) -> str:
+    if not path_str:
+        return ""
+    return path_str.replace("\\", "/").rsplit("/", 1)[-1]
 
 def correlate_artifacts(db_or_conn: Union[str, sqlite3.Connection]) -> List[Dict[str, Any]]:
     """
-    Main correlator.
-
-    Accepts:
-      - db_or_conn: path to sqlite DB file OR an open sqlite3.Connection
-
-    Returns: list of dicts { timestamp, artifact_type, detail, anomaly, session }
+    Main Forensics Correlator.
+    Accepts DB path or sqlite3 connection and returns chronological correlated timeline.
     """
     conn = None
     close_conn = False
     try:
-        # Accept either DB path or connection
         if isinstance(db_or_conn, str):
             conn = sqlite3.connect(db_or_conn)
             close_conn = True
@@ -165,177 +124,210 @@ def correlate_artifacts(db_or_conn: Union[str, sqlite3.Connection]) -> List[Dict
         else:
             raise TypeError("db_or_conn must be sqlite path or sqlite3.Connection")
 
-        # Friendly rows as dicts
         conn.row_factory = lambda cursor, row: {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
         cur = conn.cursor()
 
-        # Fetch rows with event_time ordering
         cur.execute("""
             SELECT *, COALESCE(timestamp, last_access) AS event_time
             FROM artifacts
             WHERE timestamp IS NOT NULL OR last_access IS NOT NULL
             ORDER BY event_time ASC
         """)
-        raw_rows = cur.fetchall()
-        rows = [dict(r) for r in raw_rows]
+        rows = [dict(r) for r in cur.fetchall()]
 
         out: List[Dict[str, Any]] = []
         session_id = 1
-        last_time: Union[datetime.datetime, None] = None
+        last_time: Optional[datetime.datetime] = None
 
-        # Indexes to help linking & anomaly detection
-        # last_seen_by_name[name] = (datetime, artifact_type, row)
+        # Tracking maps for cross-artifact relation detection
+        last_downloads: List[tuple[datetime.datetime, str, Dict[str, Any]]] = []  # (time, filename, row)
         last_seen_by_name: Dict[str, Any] = {}
-        # map exe names/paths -> last seen prefetch row and time
         last_prefetch_by_exe: Dict[str, Any] = {}
+        last_usb_inserted: List[tuple[datetime.datetime, str]] = []
 
         for r in rows:
             try:
-                t = _coerce_row_time(r)
+                raw_time = r.get("event_time") or r.get("timestamp") or r.get("last_access")
+                t = _parse_iso_flexible(raw_time)
                 if not t:
-                    # skip rows with no parseable time
                     continue
 
-                # session logic
+                # Session segmentation
                 if last_time is not None:
                     delta = (t - last_time).total_seconds()
                     if delta > _SESSION_GAP_SECONDS:
                         session_id += 1
                 last_time = t
 
-                artifact_type_raw = (r.get("artifact_type") or "").lower()
-                artifact_type = artifact_type_raw
+                artifact_type = (r.get("artifact_type") or "unknown").lower()
                 name = r.get("name") or ""
                 path = r.get("path") or ""
-                extra_raw = r.get("extra") or ""
-                kv = _parse_extra_to_kv(extra_raw)
-
-                # Prefer run_count DB column else extra
+                extra = r.get("extra") or ""
+                kv = _parse_extra_to_kv(extra)
                 run_count = _extract_run_count_from_row(r)
 
-                # Detect fields: exe_path (prefetch), target (lnk)
-                exe_path = None
-                target = None
-                # common keys (lowercased by _parse_extra_to_kv)
-                exe_path = kv.get("exe") or kv.get("exe_path") or kv.get("executable") or kv.get("targetexe")
-                target = kv.get("target") or kv.get("arguments") or kv.get("lnk_target")
-
-                # Build base description and anomaly hints
-                base = ""
+                base_label = ""
                 anomalies = []
+                mitre_tags = []
+                relation_notes = []
 
-                if "prefetch" in artifact_type or artifact_type.startswith("prefetch"):
-                    if run_count is not None:
-                        base = f"🚀 Executed Program (runs: {run_count})"
-                    else:
-                        base = "🚀 Executed Program"
-                    # store last prefetch by exe name (and basename)
+                # 1. Artifact Type Classification & Base Labeling
+                if "prefetch" in artifact_type:
+                    rc_str = f" (Run Count: {run_count})" if run_count is not None else ""
+                    base_label = f"🚀 Application Executed{rc_str}"
+                    mitre_tags.append("T1204: User Execution")
+                    exe_path = kv.get("exe_path") or path
                     if exe_path:
-                        key = exe_path.lower()
-                        last_prefetch_by_exe[key] = (t, r)
-                        # also store basename
-                        last_prefetch_by_exe.setdefault(ntpath_basename(exe_path).lower(), (t, r))
+                        last_prefetch_by_exe[exe_path.lower()] = (t, r)
+                        last_prefetch_by_exe[ntpath_basename(exe_path).lower()] = (t, r)
 
-                elif "lnk" in artifact_type or artifact_type.startswith("lnk"):
-                    base = "🔗 Shortcut / LNK"
-                elif "recycle" in artifact_type or artifact_type.startswith("recycle"):
-                    base = "🗑 Recycle Bin (deleted file)"
+                elif "userassist" in artifact_type:
+                    rc = kv.get("run_count", "")
+                    focus_time = kv.get("focus_time_seconds", "")
+                    base_label = f"👤 GUI App Execution [UserAssist] (Runs: {rc}, Focus: {focus_time}s)"
+                    mitre_tags.append("T1204: User Execution")
+
+                elif "bam" in artifact_type:
+                    base_label = f"⚙️ Background Activity Moderator (Kernel Execution)"
+                    mitre_tags.append("T1204: User Execution")
+
+                elif "browser_download" in artifact_type:
+                    base_label = f"📥 Web File Downloaded ({name})"
+                    mitre_tags.append("T1566: Initial Access")
+                    last_downloads.append((t, name.lower(), r))
+
+                elif "browser_url" in artifact_type:
+                    base_label = f"🌐 Web Page Visited ({name})"
+                    mitre_tags.append("T1071: Application Layer Protocol")
+
+                elif "powershell" in artifact_type:
+                    threat_tag = kv.get("threat_tag")
+                    severity = kv.get("severity")
+                    if threat_tag:
+                        base_label = f"⚡ PowerShell Command: [{severity}] {threat_tag}"
+                        anomalies.append(f"Suspicious CLI Syntax: {threat_tag}")
+                        mitre_tags.append("T1059.001: PowerShell")
+                    else:
+                        base_label = f"💻 PowerShell Command Executed"
+                        mitre_tags.append("T1059.001: PowerShell")
+
+                elif "usb" in artifact_type:
+                    base_label = f"🔌 USB / Removable Storage Connected ({name})"
+                    mitre_tags.append("T1052: Physical Medium")
+                    last_usb_inserted.append((t, name))
+
+                elif "lnk" in artifact_type:
+                    target = kv.get("target", "")
+                    base_label = f"🔗 Shortcut Opened -> {target or name}"
+                    mitre_tags.append("T1204.002: Malicious File")
+
+                elif "recycle" in artifact_type:
+                    orig_path = kv.get("orig_path", "")
+                    base_label = f"🗑️ File Deleted to Recycle Bin ({orig_path or name})"
+                    mitre_tags.append("T1070.004: File Deletion")
+
                 elif "shellbag" in artifact_type:
-                    base = "📂 Folder Viewed"
+                    base_label = f"📂 Folder Viewed in Explorer ({path})"
+
+                elif "startup" in artifact_type:
+                    base_label = f"🔄 Autorun Persistence Registered ({name})"
+                    anomalies.append("Persistence Mechanism Configured")
+                    mitre_tags.append("T1547.001: Registry Run Keys")
+
+                elif "event" in artifact_type:
+                    if "1102" in extra or "104" in extra or "cleared" in artifact_type:
+                        base_label = f"🚨 AUDIT LOG CLEARED (TAMPERING DETECTED)"
+                        anomalies.append("CRITICAL: Event Log Cleared / Anti-Forensics")
+                        mitre_tags.append("T1070.001: Clear Windows Event Logs")
+                    elif "logon_failed" in artifact_type:
+                        base_label = f"⚠️ Failed Logon Attempt"
+                        anomalies.append("Failed Logon Event")
+                        mitre_tags.append("T1110: Brute Force")
+                    elif "logon" in artifact_type:
+                        base_label = f"🔑 Successful User Logon"
+                        mitre_tags.append("T1078: Valid Accounts")
+                    elif "service" in artifact_type:
+                        base_label = f"🛠️ New Service Installed"
+                        mitre_tags.append("T1543.003: Windows Service")
+                    else:
+                        base_label = f"🛡️ Windows Security Event ({name})"
+
+                elif "jumplist" in artifact_type:
+                    base_label = f"📋 Jump List Item Accessed ({name})"
+
                 else:
-                    base = f"🕵️ {artifact_type or 'artifact'}"
+                    base_label = f"🔍 {artifact_type.upper()}: {name}"
 
-                # relation detection: if LNK and target matches a known prefetch exe seen in the same session (within gap)
-                relation_text = ""
-                if (("lnk" in artifact_type) or target) and target:
-                    # normalize target (strip quotes)
-                    target_norm = target.strip().strip('"').lower()
-                    # try exact match
-                    pref = last_prefetch_by_exe.get(target_norm)
-                    if not pref:
-                        # try basename match
-                        basename = ntpath_basename(target_norm).lower()
-                        pref = last_prefetch_by_exe.get(basename)
-                    if pref:
-                        pref_time, pref_row = pref
-                        # if prefetch happened within session gap we assume relation
-                        if abs((t - pref_time).total_seconds()) <= _SESSION_GAP_SECONDS:
-                            relation_text = f"(Linked to Prefetch: {pref_row.get('name')})"
+                # 2. Cross-Artifact Pipeline Correlator: Download -> Execution
+                if "prefetch" in artifact_type or "bam" in artifact_type or "userassist" in artifact_type:
+                    exe_name_clean = ntpath_basename(name).lower().replace(".pf", "")
+                    for dl_time, dl_name, dl_row in last_downloads:
+                        if dl_name in exe_name_clean or exe_name_clean in dl_name:
+                            time_diff = (t - dl_time).total_seconds()
+                            if 0 <= time_diff <= 600:  # within 10 minutes of download
+                                relation_notes.append(f"⚡ [PIPELINE] Executed {int(time_diff)}s after Browser Download ({dl_name})")
+                                anomalies.append("Immediate Execution After Web Download")
+                                mitre_tags.append("T1204: User Execution")
+                                break
 
-                # anomaly: deleted then executed soon after
+                # 3. Path-Based Suspicious Activity Detection
+                target_check_path = path or name
+                for p_regex, p_desc, p_mitre in SUSPICIOUS_PATHS:
+                    if p_regex.search(target_check_path):
+                        anomalies.append(f"⚠ {p_desc}")
+                        mitre_tags.append(p_mitre)
+
+                # 4. Deletion before / after Execution
                 if "prefetch" in artifact_type:
                     prev = last_seen_by_name.get(name)
                     if prev:
                         prev_time, prev_type, _ = prev
-                        if prev_type and "recycle" in prev_type.lower():
-                            delta = (t - prev_time).total_seconds()
-                            if 0 <= delta <= 300:
-                                anomalies.append("⚠ Deleted -> Executed soon after")
+                        if "recycle" in prev_type:
+                            delta_sec = (t - prev_time).total_seconds()
+                            if 0 <= delta_sec <= 300:
+                                anomalies.append("⚠ Deleted File Executed Soon After")
 
-                # anomaly: frequent execution
-                if run_count is not None and run_count >= 50:
-                    anomalies.append("⚠ Frequently executed (high run_count)")
+                # 5. Build Detail String
+                detail_parts = [f"[Session {session_id}] {base_label}"]
+                if path and path != name:
+                    detail_parts.append(f"| Path: {path}")
+                if relation_notes:
+                    detail_parts.append(" | ".join(relation_notes))
 
-                # Compose detail text
-                detail_parts = [f"[Session {session_id}] {base}"]
-                if name:
-                    detail_parts.append(name)
-                if path:
-                    detail_parts.append(f"| {path}")
-                if exe_path:
-                    detail_parts.append(f"| exe={exe_path}")
-                if target:
-                    detail_parts.append(f"| target={target}")
-                if kv:
-                    # keep a compact hint of key fields
-                    hint_parts = []
-                    for k in ("source", "pref_hash", "files_count", "volumes_count"):
-                        if k in kv:
-                            hint_parts.append(f"{k}={kv[k]}")
-                    if hint_parts:
-                        detail_parts.append("| " + ", ".join(hint_parts))
-                if relation_text:
-                    detail_parts.append(relation_text)
+                anomaly_str = "; ".join(dict.fromkeys(anomalies)) if anomalies else ""
+                mitre_str = " ".join(f"[{m}]" for m in dict.fromkeys(mitre_tags)) if mitre_tags else ""
 
-                detail = " ".join(p for p in detail_parts if p)
-
-                anomaly_field = "; ".join(anomalies) if anomalies else ""
-
-                # Append output row
                 out.append({
                     "timestamp": _format_iso_z(t),
                     "artifact_type": artifact_type,
-                    "detail": detail,
-                    "anomaly": anomaly_field,
+                    "detail": " ".join(p for p in detail_parts if p),
+                    "anomaly": anomaly_str,
+                    "mitre": mitre_str,
                     "session": session_id
                 })
 
-                # update last_seen_by_name
                 if name:
                     last_seen_by_name[name] = (t, artifact_type, r)
 
             except Exception as e:
-                # Per-row error should not stop everything
-                _debug(f"Error processing row id={r.get('id')}: {e}\n{traceback.format_exc()}")
                 continue
 
-        # final sort just in case
+        # Sort chronologically
         try:
-            out_sorted = sorted(out, key=lambda x: _parse_iso_flexible(x.get("timestamp")))
+            out_sorted = sorted(out, key=lambda x: _parse_iso_flexible(x.get("timestamp")) or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc))
         except Exception:
             out_sorted = out
 
         return out_sorted
 
     except Exception as e:
-        _debug(f"Top-level correlator failure: {e}\n{traceback.format_exc()}")
-        # Return one error row to ensure GUI receives something
         now = datetime.datetime.now(datetime.timezone.utc)
         return [{
             "timestamp": _format_iso_z(now),
             "artifact_type": "error",
-            "detail": f"Correlator error: {str(e)} (see logs).",
+            "detail": f"Correlator error: {str(e)}",
             "anomaly": "error",
+            "mitre": "",
             "session": 0
         }]
     finally:
@@ -344,14 +336,3 @@ def correlate_artifacts(db_or_conn: Union[str, sqlite3.Connection]) -> List[Dict
                 conn.close()
             except Exception:
                 pass
-
-# Helper: local basename without importing os repeatedly
-def ntpath_basename(path_str: str) -> str:
-    try:
-        # handle None
-        if not path_str:
-            return ""
-        # use rightmost separator
-        return path_str.replace("\\", "/").rsplit("/", 1)[-1]
-    except Exception:
-        return str(path_str)

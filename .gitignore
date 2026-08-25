@@ -37,6 +37,7 @@ out.csv
 *.pdf
 obj.txt
 *.log
+progress.txt
 
 # OS generated files
 .DS_Store
