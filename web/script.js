@@ -317,6 +317,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    // JSON Syntax Highlighter Helper
+    function syntaxHighlightJson(jsonObj) {
+        let jsonStr = typeof jsonObj !== 'string' ? JSON.stringify(jsonObj, null, 2) : jsonObj;
+        jsonStr = jsonStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return jsonStr.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+            let cls = 'hl-num';
+            if (/^"/.test(match)) {
+                if (/:$/.test(match)) {
+                    cls = 'hl-key';
+                } else {
+                    cls = 'hl-str';
+                }
+            } else if (/true|false/.test(match)) {
+                cls = 'hl-bool';
+            } else if (/null/.test(match)) {
+                cls = 'hl-null';
+            }
+            return '<span class="' + cls + '">' + match + '</span>';
+        });
+    }
+
     // --- DOCKED EVIDENCE DETAIL INSPECTOR ---
     function populateDockedInspector(art) {
         inspectorHeaderTitle.textContent = `[ID ${art.id}] ${art.name || art.artifact_type}`;
@@ -331,17 +352,20 @@ document.addEventListener('DOMContentLoaded', () => {
         let threatHtml = '';
         if (extraStr.includes('threat_tag') || extraStr.includes('CRITICAL') || extraStr.includes('TAMPERING')) {
             threatHtml = `
-                <div style="color: var(--accent-red); font-weight: bold; margin-bottom: 6px;">🚨 SUSPICIOUS THREAT INDICATOR IDENTIFIED</div>
-                <div style="font-family: var(--font-mono); font-size: 0.76rem; background: rgba(239, 68, 68, 0.1); padding: 8px; border-radius: 4px; border: 1px solid var(--accent-red);">
+                <div style="color: #FF7B72; font-weight: bold; margin-bottom: 8px; font-size: 0.84rem;">🚨 SUSPICIOUS THREAT INDICATOR IDENTIFIED</div>
+                <div style="font-family: var(--font-mono); font-size: 0.78rem; background: rgba(248, 81, 73, 0.12); padding: 10px; border-radius: 4px; border: 1px solid rgba(248, 81, 73, 0.4); color: #FCA5A5; line-height: 1.4;">
                     ${escapeHtml(extraStr)}
                 </div>
             `;
         } else {
-            threatHtml = `<p style="color: var(--text-muted);">No automated anomaly flags triggered for this event.</p>`;
+            threatHtml = `
+                <div style="color: #3FB950; font-weight: 600; margin-bottom: 4px;">✅ No Automated Threat Flags Triggered</div>
+                <p style="color: var(--text-muted); font-size: 0.76rem;">Event characteristics fall within standard OS baseline behavior.</p>
+            `;
         }
         insThreatContent.innerHTML = threatHtml;
 
-        // JSON Viewer tab
+        // JSON Viewer tab with Syntax Highlighting
         let rawObj = {};
         try {
             if (art.details) {
@@ -352,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             rawObj = art;
         }
-        insJsonBox.textContent = JSON.stringify(rawObj, null, 2);
+        insJsonBox.innerHTML = syntaxHighlightJson(rawObj);
     }
 
     // Inspector Tab Switching

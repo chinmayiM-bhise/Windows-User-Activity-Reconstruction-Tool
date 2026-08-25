@@ -123,10 +123,14 @@ class WinActivityReconApp(tk.Tk):
         style.configure("Danger.TButton", background=THEME["bg_elevated"], foreground=THEME["accent_threat"], font=FONT_BOLD, borderwidth=1, bordercolor=THEME["border"], padding=(8, 5))
         style.map("Danger.TButton", background=[("active", THEME["accent_threat_bg"]), ("hover", THEME["accent_threat_bg"])], foreground=[("active", THEME["accent_threat"])])
 
-        # Inputs & Comboboxes
+        # Inputs & Comboboxes (with bright blue dropdown arrow)
         style.configure("TEntry", fieldbackground=THEME["bg_elevated"], foreground=THEME["text_primary"], insertcolor=THEME["accent_blue"], bordercolor=THEME["border"], padding=5, font=FONT_REGULAR)
-        style.configure("TCombobox", fieldbackground=THEME["bg_elevated"], foreground=THEME["text_primary"], selectbackground=THEME["bg_highlight"], selectforeground=THEME["text_primary"], bordercolor=THEME["border"], font=FONT_REGULAR)
-        style.map("TCombobox", fieldbackground=[("readonly", THEME["bg_elevated"])], foreground=[("readonly", THEME["text_primary"])])
+        style.configure("TCombobox", fieldbackground=THEME["bg_elevated"], background=THEME["bg_elevated"], foreground=THEME["text_primary"], arrowcolor=THEME["accent_blue"], selectbackground=THEME["bg_highlight"], selectforeground=THEME["text_primary"], bordercolor=THEME["border"], font=FONT_REGULAR)
+        style.map("TCombobox", 
+                  fieldbackground=[("readonly", THEME["bg_elevated"])], 
+                  foreground=[("readonly", THEME["text_primary"])],
+                  background=[("active", THEME["bg_highlight"]), ("hover", THEME["bg_highlight"])],
+                  arrowcolor=[("active", "#FFFFFF"), ("hover", "#FFFFFF"), ("!disabled", THEME["accent_blue"])])
 
         # Treeview / Data Grid
         style.configure("Treeview", background=THEME["bg_surface"], fieldbackground=THEME["bg_surface"], foreground=THEME["text_primary"], rowheight=30, borderwidth=0, font=FONT_REGULAR)
@@ -138,6 +142,11 @@ class WinActivityReconApp(tk.Tk):
         style.configure("Main.TNotebook", background=THEME["bg_surface"], borderwidth=0)
         style.configure("Main.TNotebook.Tab", background=THEME["bg_elevated"], foreground=THEME["text_secondary"], padding=(14, 6), font=FONT_TAB)
         style.map("Main.TNotebook.Tab", background=[("selected", "#1F6FEB")], foreground=[("selected", "#FFFFFF")])
+
+        # Inspector Sub-tabs
+        style.configure("Inspector.TNotebook", background=THEME["bg_surface"], borderwidth=0)
+        style.configure("Inspector.TNotebook.Tab", background=THEME["bg_elevated"], foreground=THEME["text_secondary"], padding=(10, 4), font=FONT_REGULAR)
+        style.map("Inspector.TNotebook.Tab", background=[("selected", THEME["bg_highlight"])], foreground=[("selected", THEME["accent_blue"])])
 
     def _build_menu(self):
         menubar = tk.Menu(self, background=THEME["bg_surface"], foreground=THEME["text_primary"], activebackground=THEME["bg_highlight"], activeforeground=THEME["accent_blue"], font=FONT_REGULAR)
@@ -448,12 +457,12 @@ class WinActivityReconApp(tk.Tk):
         self.ins_selected_title = ttk.Label(ins_header, text="[None Selected]", font=FONT_MONO, foreground=THEME["text_secondary"], background=THEME["bg_surface"])
         self.ins_selected_title.pack(side=tk.RIGHT)
 
-        self.ins_notebook = ttk.Notebook(inspector_frame)
+        self.ins_notebook = ttk.Notebook(inspector_frame, style="Inspector.TNotebook")
         self.ins_notebook.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         # TAB 1: OVERVIEW
         tab_overview = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
-        self.ins_notebook.add(tab_overview, text="Overview")
+        self.ins_notebook.add(tab_overview, text="🏷️ Forensic Overview")
 
         self.ins_lbl_type = ttk.Label(tab_overview, text="Type: -", font=FONT_BOLD, foreground="#38BDF8", background=THEME["bg_surface"])
         self.ins_lbl_type.grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -477,13 +486,13 @@ class WinActivityReconApp(tk.Tk):
 
         # TAB 2: THREAT CONTEXT
         tab_threat = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
-        self.ins_notebook.add(tab_threat, text="Threat Context")
+        self.ins_notebook.add(tab_threat, text="🛡️ Threat Context")
         self.ins_txt_threat = tk.Text(tab_threat, background="#221215", foreground="#FCA5A5", insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
         self.ins_txt_threat.pack(fill=tk.BOTH, expand=True)
 
         # TAB 3: RAW JSON
         tab_json = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
-        self.ins_notebook.add(tab_json, text="Raw JSON")
+        self.ins_notebook.add(tab_json, text="💻 Raw JSON")
         self.ins_txt_json = tk.Text(tab_json, background="#0B0E14", foreground="#58A6FF", insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.NONE)
         self.ins_txt_json.pack(fill=tk.BOTH, expand=True)
 

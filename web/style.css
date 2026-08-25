@@ -290,14 +290,28 @@ input:not(:checked) + .slider:before { transform: translateX(16px); }
 }
 
 .forensic-select {
-    padding: 6px 10px;
-    background: var(--bg-elevated);
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding: 6px 30px 6px 10px;
+    background-color: var(--bg-elevated);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2358A6FF' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-size: 0.78rem;
     outline: none;
     cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.forensic-select:hover {
+    border-color: var(--accent-blue);
+    background-color: var(--bg-highlight);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
 /* Tasteful Buttons */
@@ -733,23 +747,50 @@ input:not(:checked) + .slider:before { transform: translateX(16px); }
 
 .inspector-tabs {
     display: flex;
-    gap: 2px;
+    gap: 4px;
 }
 
 .inspect-tab {
     padding: 4px 10px;
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--text-muted);
     font-size: 0.74rem;
     font-weight: 500;
     cursor: pointer;
+    transition: all 0.12s ease;
 }
 
-.inspect-tab.active {
+.inspect-tab:hover {
     background: var(--bg-elevated);
-    color: var(--accent-blue);
+    color: var(--text-primary);
+}
+
+/* Tab 1: Forensic Overview */
+.inspect-tab[data-tab="tab-overview"]:hover { color: #58A6FF; }
+.inspect-tab[data-tab="tab-overview"].active {
+    background: rgba(88, 166, 255, 0.15);
+    color: #58A6FF;
+    border-color: rgba(88, 166, 255, 0.35);
+    font-weight: 600;
+}
+
+/* Tab 2: MITRE & Threat Context */
+.inspect-tab[data-tab="tab-mitre"]:hover { color: #FF7B72; }
+.inspect-tab[data-tab="tab-mitre"].active {
+    background: rgba(248, 81, 73, 0.18);
+    color: #FF7B72;
+    border-color: rgba(248, 81, 73, 0.45);
+    font-weight: 600;
+}
+
+/* Tab 3: Raw JSON */
+.inspect-tab[data-tab="tab-json"]:hover { color: #7EE787; }
+.inspect-tab[data-tab="tab-json"].active {
+    background: rgba(63, 185, 80, 0.15);
+    color: #7EE787;
+    border-color: rgba(63, 185, 80, 0.35);
     font-weight: 600;
 }
 
@@ -845,15 +886,22 @@ input:not(:checked) + .slider:before { transform: translateX(16px); }
 
 .json-viewer {
     background: #0B0E14;
-    color: #58A6FF;
-    padding: 12px;
+    color: #F0F6FC;
+    padding: 12px 14px;
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 0.76rem;
+    line-height: 1.45;
     max-height: 180px;
     overflow-y: auto;
     border: 1px solid var(--border-color);
 }
+
+.hl-key { color: #58A6FF; font-weight: 600; }
+.hl-str { color: #7EE787; }
+.hl-num { color: #FFA657; }
+.hl-bool { color: #BC8CFF; font-weight: 600; }
+.hl-null { color: #8B949E; font-style: italic; }
 
 .threat-box {
     padding: 12px;
