@@ -455,20 +455,20 @@ class WinActivityReconApp(tk.Tk):
         tab_overview = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
         self.ins_notebook.add(tab_overview, text="Overview")
 
-        self.ins_lbl_type = ttk.Label(tab_overview, text="Type: -", font=FONT_BOLD, foreground=THEME["accent_blue"], background=THEME["bg_surface"])
+        self.ins_lbl_type = ttk.Label(tab_overview, text="Type: -", font=FONT_BOLD, foreground="#38BDF8", background=THEME["bg_surface"])
         self.ins_lbl_type.grid(row=0, column=0, sticky=tk.W, pady=2)
 
-        self.ins_lbl_time = ttk.Label(tab_overview, text="Timestamp (UTC): -", font=FONT_MONO, foreground=THEME["text_secondary"], background=THEME["bg_surface"])
+        self.ins_lbl_time = ttk.Label(tab_overview, text="Timestamp (UTC): -", font=FONT_MONO_BOLD, foreground="#3FB950", background=THEME["bg_surface"])
         self.ins_lbl_time.grid(row=0, column=1, sticky=tk.W, pady=2, padx=16)
 
-        self.ins_lbl_name = ttk.Label(tab_overview, text="Resource: -", font=FONT_REGULAR, background=THEME["bg_surface"])
+        self.ins_lbl_name = ttk.Label(tab_overview, text="Resource: -", font=FONT_BOLD, foreground="#F0F6FC", background=THEME["bg_surface"])
         self.ins_lbl_name.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=2)
 
-        self.ins_lbl_path = ttk.Label(tab_overview, text="Path: -", font=FONT_MONO, foreground=THEME["text_muted"], background=THEME["bg_surface"])
+        self.ins_lbl_path = ttk.Label(tab_overview, text="Path: -", font=FONT_MONO, foreground="#BC8CFF", background=THEME["bg_surface"])
         self.ins_lbl_path.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
 
-        ttk.Label(tab_overview, text="Decoded Extra Attributes:", font=FONT_HEADING, foreground=THEME["text_muted"], background=THEME["bg_surface"]).grid(row=3, column=0, sticky=tk.W, pady=(8, 2))
-        self.ins_txt_extra = tk.Text(tab_overview, height=3, background=THEME["bg_elevated"], foreground=THEME["text_primary"], insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
+        ttk.Label(tab_overview, text="Decoded Extra Attributes & Parameters:", font=FONT_HEADING, foreground="#FFA657", background=THEME["bg_surface"]).grid(row=3, column=0, sticky=tk.W, pady=(8, 2))
+        self.ins_txt_extra = tk.Text(tab_overview, height=3, background=THEME["bg_elevated"], foreground="#FFA657", insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
         self.ins_txt_extra.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=2)
 
         tab_overview.columnconfigure(0, weight=1)
@@ -478,13 +478,13 @@ class WinActivityReconApp(tk.Tk):
         # TAB 2: THREAT CONTEXT
         tab_threat = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
         self.ins_notebook.add(tab_threat, text="Threat Context")
-        self.ins_txt_threat = tk.Text(tab_threat, background=THEME["bg_elevated"], foreground=THEME["accent_threat"], insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
+        self.ins_txt_threat = tk.Text(tab_threat, background="#221215", foreground="#FCA5A5", insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
         self.ins_txt_threat.pack(fill=tk.BOTH, expand=True)
 
         # TAB 3: RAW JSON
         tab_json = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
         self.ins_notebook.add(tab_json, text="Raw JSON")
-        self.ins_txt_json = tk.Text(tab_json, background="#0B0E14", foreground=THEME["accent_blue"], insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.NONE)
+        self.ins_txt_json = tk.Text(tab_json, background="#0B0E14", foreground="#58A6FF", insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.NONE)
         self.ins_txt_json.pack(fill=tk.BOTH, expand=True)
 
     def _populate_hierarchical_category_tree(self):
@@ -542,7 +542,7 @@ class WinActivityReconApp(tk.Tk):
     def _render_analytics_charts(self):
         self.fig.clear()
         
-        # 1. Timeline Histogram (Sapphire Blue)
+        # 1. Timeline Histogram (Sapphire Blue with non-overlapping spaced dates)
         ax1 = self.fig.add_subplot(2, 2, (1, 2))
         ax1.set_facecolor(THEME["bg_elevated"])
         time_buckets = {}
@@ -555,10 +555,25 @@ class WinActivityReconApp(tk.Tk):
         sorted_days = sorted(time_buckets.keys())
         day_counts = [time_buckets[d] for d in sorted_days]
         if sorted_days:
-            ax1.bar(sorted_days, day_counts, color=THEME["accent_blue"], edgecolor="#1F6FEB", alpha=0.85)
+            x_indices = list(range(len(sorted_days)))
+            ax1.bar(x_indices, day_counts, color=THEME["accent_blue"], edgecolor="#1F6FEB", alpha=0.85)
             ax1.set_title("Chronological Activity Density (Events over Time)", color=THEME["text_primary"], fontsize=10, fontweight="bold")
-            ax1.tick_params(colors=THEME["text_secondary"], labelsize=8, rotation=20)
-            ax1.grid(axis="y", linestyle="--", alpha=0.2)
+            
+            # Sample at most 6-8 evenly spaced ticks to eliminate cluttered overlapping text below graph
+            num_days = len(sorted_days)
+            if num_days > 7:
+                step = max(1, num_days // 6)
+                tick_pos = list(range(0, num_days, step))
+                if (num_days - 1) not in tick_pos:
+                    tick_pos.append(num_days - 1)
+                ax1.set_xticks(tick_pos)
+                ax1.set_xticklabels([sorted_days[i] for i in tick_pos], rotation=0, fontsize=8, color=THEME["text_secondary"])
+            else:
+                ax1.set_xticks(x_indices)
+                ax1.set_xticklabels(sorted_days, rotation=0, fontsize=8, color=THEME["text_secondary"])
+
+            ax1.tick_params(colors=THEME["text_secondary"], labelsize=8)
+            ax1.grid(axis="y", linestyle="--", alpha=0.15)
         else:
             ax1.text(0.5, 0.5, "No Timestamped Evidence Available", color=THEME["text_muted"], ha="center", va="center", fontsize=9)
 
@@ -586,7 +601,9 @@ class WinActivityReconApp(tk.Tk):
         for art in self.all_artifacts:
             t = (art.get("artifact_type") or "").lower()
             if "prefetch" in t or "userassist" in t or "bam" in t:
-                name = art.get("name") or "Unknown"
+                name = (art.get("name") or "Unknown").replace("\\", "/").split("/")[-1]
+                if "-" in name and name.upper().endswith(".PF"):
+                    name = name.split("-")[0]
                 app_counts[name] = app_counts.get(name, 0) + 1
 
         top_apps = sorted(app_counts.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -594,7 +611,7 @@ class WinActivityReconApp(tk.Tk):
             ax3.barh([a[0] for a in top_apps][::-1], [a[1] for a in top_apps][::-1], color=THEME["accent_green"], edgecolor="#238636", alpha=0.85)
             ax3.set_title("Top Executed Applications", color=THEME["text_primary"], fontsize=10, fontweight="bold")
             ax3.tick_params(colors=THEME["text_secondary"], labelsize=8)
-            ax3.grid(axis="x", linestyle="--", alpha=0.2)
+            ax3.grid(axis="x", linestyle="--", alpha=0.15)
         else:
             ax3.text(0.5, 0.5, "No Execution Records", color=THEME["text_muted"], ha="center", va="center", fontsize=9)
 

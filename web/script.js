@@ -627,19 +627,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasets: [{
                     label: 'Events Recorded',
                     data: dayCounts.length ? dayCounts : [0],
-                    backgroundColor: 'rgba(255, 255, 255, 0.75)',
-                    borderColor: '#FFFFFF',
-                    borderWidth: 1,
-                    borderRadius: 2
+                    backgroundColor: 'rgba(88, 166, 255, 0.6)',
+                    borderColor: '#58A6FF',
+                    borderWidth: 1.5,
+                    borderRadius: 3
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#161B22',
+                        borderColor: '#30363D',
+                        borderWidth: 1,
+                        titleColor: '#F0F6FC',
+                        bodyColor: '#58A6FF',
+                        padding: 10
+                    }
+                },
                 scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#71717A', font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#71717A', font: { size: 10 } } }
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: {
+                            color: '#8B949E',
+                            font: { size: 10 },
+                            autoSkip: true,
+                            maxTicksLimit: 7,
+                            maxRotation: 0
+                        }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: { color: '#8B949E', font: { size: 10 } }
+                    }
                 }
             }
         });
@@ -661,15 +683,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 labels: sortedCats.map(c => c[0]),
                 datasets: [{
                     data: sortedCats.map(c => c[1]),
-                    backgroundColor: ['#FFFFFF', '#E4E4E7', '#D4D4D8', '#A1A1AA', '#71717A', '#52525B', '#3F3F46', '#27272A'],
-                    borderWidth: 1,
-                    borderColor: '#121316'
+                    backgroundColor: ['#58A6FF', '#3FB950', '#BC8CFF', '#FFA657', '#39C5CF', '#D29922', '#F85149', '#F472B6'],
+                    borderWidth: 2,
+                    borderColor: '#161B22'
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { position: 'right', labels: { color: '#A1A1AA', font: { size: 10 } } } }
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { color: '#8B949E', font: { size: 10 }, boxWidth: 12, padding: 8 }
+                    }
+                }
             }
         });
 
@@ -678,7 +705,10 @@ document.addEventListener('DOMContentLoaded', () => {
         allArtifacts.forEach(art => {
             const t = (art.artifact_type || '').toLowerCase();
             if (t.includes('prefetch') || t.includes('userassist') || t.includes('bam')) {
-                const name = art.name || 'Unknown';
+                let name = (art.name || 'Unknown').replace(/^.*[\\\/]/, '');
+                if (name.includes('-') && name.toUpperCase().endsWith('.PF')) {
+                    name = name.split('-')[0];
+                }
                 appCounts[name] = (appCounts[name] || 0) + 1;
             }
         });
@@ -694,10 +724,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasets: [{
                     label: 'Executions',
                     data: topApps.map(a => a[1]),
-                    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-                    borderColor: '#FFFFFF',
-                    borderWidth: 1,
-                    borderRadius: 2
+                    backgroundColor: 'rgba(63, 185, 80, 0.6)',
+                    borderColor: '#3FB950',
+                    borderWidth: 1.5,
+                    borderRadius: 3
                 }]
             },
             options: {
@@ -706,8 +736,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#71717A' } },
-                    y: { grid: { display: false }, ticks: { color: '#D4D4D8', font: { size: 10 } } }
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: { color: '#8B949E', font: { size: 10 }, autoSkip: true, maxTicksLimit: 6 }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { color: '#F0F6FC', font: { size: 10 } }
+                    }
                 }
             }
         });

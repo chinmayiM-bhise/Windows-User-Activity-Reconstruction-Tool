@@ -782,8 +782,23 @@ input:not(:checked) + .slider:before { transform: translateX(16px); }
 .inspect-kv {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    transition: border-color 0.1s ease;
 }
+
+.inspect-kv:hover {
+    border-color: var(--border-focus);
+}
+
+.inspect-card-type { border-left: 3px solid #38BDF8; }
+.inspect-card-time { border-left: 3px solid #3FB950; }
+.inspect-card-name { border-left: 3px solid #58A6FF; }
+.inspect-card-path { border-left: 3px solid #BC8CFF; }
+.inspect-card-extra { border-left: 3px solid #FFA657; }
 
 .inspect-kv.full-width {
     grid-column: span 2;
@@ -791,14 +806,24 @@ input:not(:checked) + .slider:before { transform: translateX(16px); }
 
 .inspect-kv .k {
     font-size: 0.68rem;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
 }
 
+.text-blue { color: #58A6FF !important; }
+.text-cyan { color: #38BDF8 !important; }
+.text-success { color: #3FB950 !important; }
+.text-purple { color: #BC8CFF !important; }
+.text-amber { color: #FFA657 !important; }
+
+.highlight-green { color: #3FB950 !important; }
+.highlight-white { color: #F0F6FC !important; }
+.highlight-purple { color: #D8B4FE !important; }
+.highlight-amber { color: #FFA657 !important; }
+
 .inspect-kv .v {
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     color: var(--text-primary);
     word-break: break-all;
 }
@@ -813,30 +838,30 @@ input:not(:checked) + .slider:before { transform: translateX(16px); }
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-color);
     font-family: var(--font-mono);
-    font-size: 0.74rem;
-    color: var(--text-primary);
-    max-height: 70px;
+    font-size: 0.76rem;
+    max-height: 85px;
     overflow-y: auto;
 }
 
 .json-viewer {
     background: #0B0E14;
     color: #58A6FF;
-    padding: 10px;
+    padding: 12px;
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
-    font-size: 0.74rem;
-    max-height: 160px;
+    font-size: 0.76rem;
+    max-height: 180px;
     overflow-y: auto;
     border: 1px solid var(--border-color);
 }
 
 .threat-box {
-    padding: 10px;
-    background: var(--bg-elevated);
+    padding: 12px;
+    background: rgba(248, 81, 73, 0.08);
     border-radius: var(--radius-sm);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-    font-size: 0.8rem;
+    border: 1px solid rgba(248, 81, 73, 0.35);
+    font-size: 0.82rem;
+    color: #FCA5A5;
 }
 
 /* ==========================================================================
