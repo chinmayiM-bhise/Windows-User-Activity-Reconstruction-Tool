@@ -142,7 +142,7 @@ def fetch_artifacts(db_path: str) -> List[Dict[str, Any]]:
     conn.close()
     return rows
 
-def generate_pdf_report(db_path: str, output_path: str, title: str = "Footprint Analyzer Forensic Audit Report", metadata: Optional[Dict[str, str]] = None) -> str:
+def generate_pdf_report(db_path: str, output_path: str, title: str = "Windows User Activity Reconstruction Tool | Audit Report", metadata: Optional[Dict[str, str]] = None) -> str:
     rows = fetch_artifacts(db_path)
     total = len(rows)
     by_type = Counter([r.get("artifact_type") or "unknown" for r in rows])
@@ -160,7 +160,7 @@ def generate_pdf_report(db_path: str, output_path: str, title: str = "Footprint 
     story = []
 
     # Title & Header Banner
-    story.append(Paragraph("🐾 FOOTPRINT ANALYZER | Forensic Audit Report", styles["title"]))
+    story.append(Paragraph("🛡️ WINACTIVITY RECON | Forensic Audit Report", styles["title"]))
     story.append(Spacer(1, 4))
     gen_time = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     story.append(Paragraph(f"<b>Report Generated:</b> {gen_time} &nbsp;|&nbsp; <b>Tool Version:</b> v1.3.1", styles["small"]))
@@ -255,7 +255,7 @@ def generate_pdf_report(db_path: str, output_path: str, title: str = "Footprint 
     doc.build(story)
     return output_path
 
-def generate_correlation_pdf(db_path: str, output_path: str, title: str = "Footprint Analyzer Reconstructed Activity & Timeline Report", metadata: Optional[Dict[str, str]] = None) -> str:
+def generate_correlation_pdf(db_path: str, output_path: str, title: str = "Windows User Activity Reconstruction Tool | Timeline Report", metadata: Optional[Dict[str, str]] = None) -> str:
     try:
         from correlator import correlate_artifacts
     except Exception as exc:
@@ -287,7 +287,7 @@ def generate_correlation_pdf(db_path: str, output_path: str, title: str = "Footp
     story = []
 
     # Title & Metadata
-    story.append(Paragraph("⏱️ FOOTPRINT ANALYZER | Activity Reconstruction Report", styles["title"]))
+    story.append(Paragraph("⏱️ WINACTIVITY RECON | Activity Reconstruction Report", styles["title"]))
     story.append(Spacer(1, 4))
     gen_time = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     story.append(Paragraph(f"<b>Report Generated:</b> {gen_time} &nbsp;|&nbsp; <b>Total Reconstructed Sessions:</b> {total_sessions} &nbsp;|&nbsp; <b>Total Correlated Events:</b> {total_events}", styles["small"]))

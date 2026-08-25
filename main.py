@@ -66,10 +66,10 @@ FONT_SMALL = ("Segoe UI", 8)
 FONT_MONO = ("Consolas", 9)
 FONT_MONO_BOLD = ("Consolas", 9, "bold")
 
-class FootprintAnalyzerApp(tk.Tk):
+class WinActivityReconApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Footprint Analyzer - Windows User Activity Reconstruction (v1.3.4)")
+        self.title("Windows User Activity Reconstruction Tool (v1.3.5)")
         self.geometry("1380x850")
         self.minsize(1080, 700)
         
@@ -173,7 +173,7 @@ class FootprintAnalyzerApp(tk.Tk):
 
         hdr_left = ttk.Frame(header, style="Surface.TFrame")
         hdr_left.pack(side=tk.LEFT)
-        ttk.Label(hdr_left, text="🐾 FOOTPRINT ANALYZER", style="Header.TLabel").pack(side=tk.LEFT)
+        ttk.Label(hdr_left, text="🛡️ WINACTIVITY RECON", style="Header.TLabel").pack(side=tk.LEFT)
         ttk.Label(hdr_left, text=" | Windows User Activity Reconstruction & Forensic Workstation", font=FONT_REGULAR, foreground=THEME["text_secondary"], background=THEME["bg_surface"]).pack(side=tk.LEFT, padx=8)
 
         hdr_right = ttk.Frame(header, style="Surface.TFrame")
@@ -862,7 +862,7 @@ class FootprintAnalyzerApp(tk.Tk):
                 "evidenceNumber": "EVID-001-CORRELATED",
                 "examiner": os.environ.get("USERNAME", "Examiner"),
                 "uniqueDescription": "Reconstructed Cross-Artifact Timeline",
-                "notes": "Generated via Footprint Analyzer Correlator."
+                "notes": "Generated via Windows User Activity Reconstruction Correlator."
             }
             res = core_logic.generate_correlation_pdf_core(p, meta)
             if res.get("status") == "success":
@@ -871,5 +871,5 @@ class FootprintAnalyzerApp(tk.Tk):
                 messagebox.showerror("PDF Error", res.get("message", "Error."))
 
 if __name__ == "__main__":
-    app = FootprintAnalyzerApp()
+    app = WinActivityReconApp()
     app.mainloop()
