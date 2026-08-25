@@ -153,35 +153,44 @@ def _make_counts_chart(rows: List[Dict[str, Any]], outpath: str):
     plt.close(fig)
 
 def _make_timeline_histogram(rows: List[Dict[str, Any]], outpath: str):
-    """Generates a timeline histogram of artifact timestamps."""
-    times = []
+    """Generates a timeline histogram of artifact timestamps safely across all OS platforms."""
+    valid_dates = []
     for r in rows:
         t = r.get("timestamp") or r.get("last_access")
         if not t:
             continue
         try:
-            s = t
-            if s.endswith("Z"):
-                s = s[:-1]
+            s = str(t).replace("Z", "").strip()
             dt = datetime.datetime.fromisoformat(s)
-            times.append(dt)
+            if dt.tzinfo:
+                dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            if dt.year >= 1990 and dt.year <= 2040:
+                valid_dates.append(dt)
         except Exception:
             continue
 
     fig, ax = plt.subplots(figsize=(7.0, 3.0), dpi=150)
-    if not times:
-        ax.text(0.5, 0.5, "No timestamp data available", ha="center", va="center", fontsize=10)
+    if not valid_dates:
+        ax.text(0.5, 0.5, "No Timestamped Evidence Available", ha="center", va="center", fontsize=10)
         ax.axis("off")
     else:
-        timestamps = [dt.timestamp() for dt in times]
-        ax.hist(timestamps, bins=24, color="#00838F", edgecolor="white")
-        ax.set_title("Chronological Activity Density (Events over Time)")
+        epoch = datetime.datetime(1970, 1, 1)
+        timestamps = [(d - epoch).total_seconds() for d in valid_dates]
+        ax.hist(timestamps, bins=min(30, max(5, len(set(timestamps)))), color="#0284C7", edgecolor="white", alpha=0.85)
+        ax.set_title("Chronological Activity Density (Events Timeline)", fontsize=10, fontweight="bold")
         xlocs = ax.get_xticks()
         if len(xlocs) > 0:
-            xlabels = [datetime.datetime.utcfromtimestamp(max(0, x)).strftime("%Y-%m-%d\n%H:%M") for x in xlocs]
-            ax.set_xticklabels(xlabels, rotation=35, ha="right", fontsize=7)
-        ax.set_xlabel("UTC Timestamp")
-        ax.set_ylabel("Events")
+            xlabels = []
+            for x in xlocs:
+                try:
+                    dt_label = epoch + datetime.timedelta(seconds=max(0, x))
+                    xlabels.append(dt_label.strftime("%Y-%m-%d\n%H:%M"))
+                except Exception:
+                    xlabels.append("")
+            ax.set_xticks(xlocs)
+            ax.set_xticklabels(xlabels, rotation=30, ha="right", fontsize=7)
+        ax.set_xlabel("UTC Timestamp", fontsize=8)
+        ax.set_ylabel("Events Indexed", fontsize=8)
         ax.grid(axis="y", linestyle="--", alpha=0.3)
 
     plt.tight_layout()

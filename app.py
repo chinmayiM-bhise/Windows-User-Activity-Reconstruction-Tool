@@ -148,96 +148,63 @@ def api_clear_db():
 
 @app.route("/api/export_csv", methods=["GET"])
 def api_export_csv():
-    temp_dir = None
-    response = None
     try:
         filename = f"artifacts_export_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         temp_dir = tempfile.mkdtemp()
         filepath = os.path.join(temp_dir, filename)
 
         result = core_logic.generate_csv_report(filepath)
-        if result["status"] == "success":
-            response = send_file(filepath, as_attachment=True, download_name=filename)
-            @response.call_on_close
-            def cleanup_file():
-                try:
-                    shutil.rmtree(temp_dir)
-                except Exception:
-                    pass
-            return response
+        if result["status"] == "success" and os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                data = f.read()
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return send_file(io.BytesIO(data), as_attachment=True, download_name=filename, mimetype="text/csv")
         else:
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return jsonify(result), 500
     except Exception as e:
         logger.exception("Error exporting CSV:")
         return jsonify({"status": "error", "message": f"Failed to export CSV: {str(e)}"}), 500
-    finally:
-        if temp_dir and os.path.exists(temp_dir) and (response is None or not hasattr(response, "call_on_close")):
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception:
-                pass
 
 @app.route("/api/export_json", methods=["GET"])
 def api_export_json():
-    temp_dir = None
-    response = None
     try:
         filename = f"artifacts_timeline_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         temp_dir = tempfile.mkdtemp()
         filepath = os.path.join(temp_dir, filename)
 
         result = core_logic.export_json_report(filepath)
-        if result["status"] == "success":
-            response = send_file(filepath, as_attachment=True, download_name=filename)
-            @response.call_on_close
-            def cleanup_file():
-                try:
-                    shutil.rmtree(temp_dir)
-                except Exception:
-                    pass
-            return response
+        if result["status"] == "success" and os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                data = f.read()
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return send_file(io.BytesIO(data), as_attachment=True, download_name=filename, mimetype="application/json")
         else:
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return jsonify(result), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        if temp_dir and os.path.exists(temp_dir) and (response is None or not hasattr(response, "call_on_close")):
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception:
-                pass
 
 @app.route("/api/export_pdf", methods=["POST"])
 def api_export_pdf():
     report_details = request.get_json() or {}
-    temp_dir = None
-    response = None
     try:
         filename = f"forensics_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         temp_dir = tempfile.mkdtemp()
         filepath = os.path.join(temp_dir, filename)
 
         result = core_logic.generate_pdf_report_core(filepath, report_details)
-        if result["status"] == "success":
-            response = send_file(filepath, as_attachment=True, download_name=filename)
-            @response.call_on_close
-            def cleanup_file():
-                try:
-                    shutil.rmtree(temp_dir)
-                except Exception:
-                    pass
-            return response
+        if result["status"] == "success" and os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                data = f.read()
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return send_file(io.BytesIO(data), as_attachment=True, download_name=filename, mimetype="application/pdf")
         else:
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return jsonify(result), 500
     except Exception as e:
         logger.exception("Error exporting PDF report:")
         return jsonify({"status": "error", "message": f"Failed to export PDF: {str(e)}"}), 500
-    finally:
-        if temp_dir and os.path.exists(temp_dir) and (response is None or not hasattr(response, "call_on_close")):
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception:
-                pass
 
 @app.route("/api/correlations", methods=["GET"])
 def api_get_correlations():
@@ -251,33 +218,22 @@ def api_get_correlations():
 @app.route("/api/export_correlation_pdf", methods=["POST"])
 def api_export_correlation_pdf():
     report_details = request.get_json() or {}
-    temp_dir = None
-    response = None
     try:
         filename = f"correlation_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         temp_dir = tempfile.mkdtemp()
         filepath = os.path.join(temp_dir, filename)
 
         result = core_logic.generate_correlation_pdf_core(filepath, report_details)
-        if result["status"] == "success":
-            response = send_file(filepath, as_attachment=True, download_name=filename)
-            @response.call_on_close
-            def cleanup_file():
-                try:
-                    shutil.rmtree(temp_dir)
-                except Exception:
-                    pass
-            return response
+        if result["status"] == "success" and os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                data = f.read()
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return send_file(io.BytesIO(data), as_attachment=True, download_name=filename, mimetype="application/pdf")
         else:
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return jsonify(result), 500
     except Exception as e:
         return jsonify({"status": "error", "message": f"Failed to export correlation PDF: {str(e)}"}), 500
-    finally:
-        if temp_dir and os.path.exists(temp_dir) and (response is None or not hasattr(response, "call_on_close")):
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception:
-                pass
 
 @app.route("/api/task_status/<task_id>", methods=["GET"])
 def api_task_status(task_id):

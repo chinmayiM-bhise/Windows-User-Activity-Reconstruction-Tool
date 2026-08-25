@@ -39,3 +39,36 @@ def test_correlator_sessionization_and_anomaly(tmp_path):
     assert results[1]["session"] == 1
     # Check pipeline anomaly detection
     assert "Immediate Execution After Web Download" in results[1]["anomaly"] or "Temp Directory" in results[1]["anomaly"]
+
+def test_pdf_generation_core(tmp_path):
+    from parsers import report_gen
+    db_path = str(tmp_path / "test_pdf.db")
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE artifacts (
+            id INTEGER PRIMARY KEY,
+            artifact_type TEXT,
+            name TEXT,
+            path TEXT,
+            timestamp TEXT,
+            last_access TEXT,
+            extra TEXT,
+            details TEXT
+        )
+    """)
+    cur.execute("""
+        INSERT INTO artifacts (artifact_type, name, path, timestamp, extra)
+        VALUES ('powershell_history', 'powershell', 'C:\\powershell.exe', '2026-08-25T10:00:00Z', 'threat_tag=IEX_DOWNLOAD')
+    """)
+    conn.commit()
+    conn.close()
+
+    pdf_out = str(tmp_path / "test_report.pdf")
+    corr_pdf_out = str(tmp_path / "test_corr.pdf")
+    
+    res1 = report_gen.generate_pdf_report(db_path, pdf_out, metadata={"Case ID": "TEST-1"})
+    assert res1 == pdf_out
+    
+    res2 = report_gen.generate_correlation_pdf(db_path, corr_pdf_out, metadata={"Case ID": "TEST-1"})
+    assert res2 == corr_pdf_out
