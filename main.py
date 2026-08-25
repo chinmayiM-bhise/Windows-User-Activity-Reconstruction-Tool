@@ -1,12 +1,12 @@
 # main.py
 r"""
-AegisDFIR - Windows Forensic Artifacts Parser & Activity Reconstruction Workstation.
-Minimalist, high-end enterprise forensic interface with:
-- ⏱️ Reconstructed User Activity Timeline & Correlation with MITRE ATT&CK Mapping
-- 📋 Autopsy-style Hierarchical Evidence Tree & Master Data Grid
-- 📊 Minimalist Monochromatic Visual Analytics Dashboard (Matplotlib)
+Footprint Analyzer - Windows Forensic Artifacts Parser & Activity Reconstruction Workstation.
+Enterprise-grade native forensic workstation featuring:
+- ⏱️ Reconstructed User Activity Timeline & Cross-Artifact Correlation with MITRE ATT&CK Mapping
+- 📋 Autopsy-style Hierarchical Evidence Tree & Searchable Master Grid
+- 📊 Embedded Visual Forensics & Analytics Dashboard (Matplotlib)
 - 📖 Forensic Artifact Catalog & Live Path Resolver
-- Clean, non-redundant controls with refined dark/monochrome typography
+- Neat, clean, cyber-slate theme with unified branding and zero redundant controls
 """
 
 import os
@@ -36,22 +36,25 @@ from correlator import correlate_artifacts
 import core_logic
 
 DB_PATH = "artifacts.db"
-TOOL_VERSION = "v1.3.3"
+TOOL_VERSION = "v1.3.4"
 
-# Minimalist Monochrome / Charcoal Theme (Clean & Professional)
+# Unified Cyber-Slate Theme (Matching Web Dashboard)
 THEME = {
-    "bg_base": "#0C0D0F",        # Deep Minimal Charcoal Black
-    "bg_surface": "#141518",     # Clean Surface
-    "bg_elevated": "#1D1F24",    # Subtle Elevated Control
-    "bg_highlight": "#282A30",   # Soft Hover
-    "bg_selected": "#32353E",    # Muted Selection
-    "text_primary": "#FAFAFA",   # 100% Crisp White
-    "text_secondary": "#A1A1AA", # Clean Neutral Slate
-    "text_muted": "#71717A",     # Muted Zinc
-    "accent_primary": "#FFFFFF", # Crisp White Accent
-    "accent_threat": "#EF4444",  # Muted Crimson (Threats only)
-    "accent_threat_bg": "#2D1417",
-    "border": "#26282E",         # Subtle Fine Border
+    "bg_base": "#0D1117",        # Deep GitHub/Obsidian Slate Base
+    "bg_surface": "#161B22",     # Elevated Card Panel
+    "bg_elevated": "#21262D",    # Active Control Background
+    "bg_highlight": "#30363D",   # Hover / Highlight
+    "bg_selected": "#1F6FEB",    # Vibrant Sapphire Blue Selection
+    "text_primary": "#F0F6FC",   # Crisp Pure White Text
+    "text_secondary": "#8B949E", # Slate Gray Text
+    "text_muted": "#6E7681",     # Muted Slate
+    "accent_blue": "#58A6FF",    # Sapphire Blue
+    "accent_green": "#3FB950",   # Emerald Green
+    "accent_purple": "#BC8CFF",  # Violet Purple
+    "accent_amber": "#D29922",   # Amber
+    "accent_threat": "#F85149",  # Alert Crimson Red
+    "accent_threat_bg": "#2E1214",
+    "border": "#30363D",         # Clean 1px Border
 }
 
 FONT_TITLE = ("Segoe UI", 11, "bold")
@@ -63,12 +66,12 @@ FONT_SMALL = ("Segoe UI", 8)
 FONT_MONO = ("Consolas", 9)
 FONT_MONO_BOLD = ("Consolas", 9, "bold")
 
-class AegisDFIRDesktopApp(tk.Tk):
+class FootprintAnalyzerApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AegisDFIR - Windows Forensic Analysis & Activity Reconstruction (v1.3.3)")
-        self.geometry("1360x840")
-        self.minsize(1050, 680)
+        self.title("Footprint Analyzer - Windows User Activity Reconstruction (v1.3.4)")
+        self.geometry("1380x850")
+        self.minsize(1080, 700)
         
         # State
         self.all_artifacts: List[Dict[str, Any]] = []
@@ -104,36 +107,42 @@ class AegisDFIRDesktopApp(tk.Tk):
         style.configure("Muted.TLabel", background=THEME["bg_surface"], foreground=THEME["text_muted"], font=FONT_SMALL)
         style.configure("Header.TLabel", font=FONT_TITLE, foreground=THEME["text_primary"], background=THEME["bg_surface"])
 
-        # Minimalist Buttons
+        # Styled Buttons
         style.configure("TButton", background=THEME["bg_elevated"], foreground=THEME["text_primary"], borderwidth=1, bordercolor=THEME["border"], padding=(8, 5), font=FONT_BOLD)
-        style.map("TButton", background=[("active", THEME["bg_highlight"]), ("hover", THEME["bg_highlight"])], foreground=[("active", "#FFFFFF")])
+        style.map("TButton", background=[("active", THEME["bg_highlight"]), ("hover", THEME["bg_highlight"])], foreground=[("active", THEME["accent_blue"])])
 
-        style.configure("Primary.TButton", background="#FFFFFF", foreground="#000000", font=FONT_BOLD, borderwidth=0, padding=(10, 5))
-        style.map("Primary.TButton", background=[("active", "#E4E4E7"), ("hover", "#E4E4E7")], foreground=[("active", "#000000"), ("hover", "#000000")])
+        # Primary Live Triage (Emerald Green)
+        style.configure("Primary.TButton", background="#238636", foreground="#FFFFFF", font=FONT_BOLD, borderwidth=0, padding=(10, 5))
+        style.map("Primary.TButton", background=[("active", "#2EA043"), ("hover", "#2EA043")], foreground=[("active", "#FFFFFF"), ("hover", "#FFFFFF")])
 
+        # Action / Export (Sapphire Blue)
+        style.configure("Action.TButton", background="#1F6FEB", foreground="#FFFFFF", font=FONT_BOLD, borderwidth=0, padding=(10, 5))
+        style.map("Action.TButton", background=[("active", "#388BFD"), ("hover", "#388BFD")], foreground=[("active", "#FFFFFF"), ("hover", "#FFFFFF")])
+
+        # Danger (Crimson Red)
         style.configure("Danger.TButton", background=THEME["bg_elevated"], foreground=THEME["accent_threat"], font=FONT_BOLD, borderwidth=1, bordercolor=THEME["border"], padding=(8, 5))
         style.map("Danger.TButton", background=[("active", THEME["accent_threat_bg"]), ("hover", THEME["accent_threat_bg"])], foreground=[("active", THEME["accent_threat"])])
 
         # Inputs & Comboboxes
-        style.configure("TEntry", fieldbackground=THEME["bg_elevated"], foreground=THEME["text_primary"], insertcolor="#FFFFFF", bordercolor=THEME["border"], padding=5, font=FONT_REGULAR)
+        style.configure("TEntry", fieldbackground=THEME["bg_elevated"], foreground=THEME["text_primary"], insertcolor=THEME["accent_blue"], bordercolor=THEME["border"], padding=5, font=FONT_REGULAR)
         style.configure("TCombobox", fieldbackground=THEME["bg_elevated"], foreground=THEME["text_primary"], selectbackground=THEME["bg_highlight"], selectforeground=THEME["text_primary"], bordercolor=THEME["border"], font=FONT_REGULAR)
         style.map("TCombobox", fieldbackground=[("readonly", THEME["bg_elevated"])], foreground=[("readonly", THEME["text_primary"])])
 
-        # Treeview / Data Grid (Crisp Monochrome)
+        # Treeview / Data Grid
         style.configure("Treeview", background=THEME["bg_surface"], fieldbackground=THEME["bg_surface"], foreground=THEME["text_primary"], rowheight=30, borderwidth=0, font=FONT_REGULAR)
         style.map("Treeview", background=[("selected", THEME["bg_selected"])], foreground=[("selected", "#FFFFFF")])
-        style.configure("Treeview.Heading", background=THEME["bg_elevated"], foreground=THEME["text_muted"], font=FONT_HEADING, bordercolor=THEME["border"], padding=5)
-        style.map("Treeview.Heading", background=[("active", THEME["bg_highlight"])], foreground=[("active", THEME["text_primary"])])
+        style.configure("Treeview.Heading", background=THEME["bg_elevated"], foreground=THEME["text_secondary"], font=FONT_HEADING, bordercolor=THEME["border"], padding=5)
+        style.map("Treeview.Heading", background=[("active", THEME["bg_highlight"])], foreground=[("active", THEME["accent_blue"])])
 
         # Notebook Tabs
         style.configure("Main.TNotebook", background=THEME["bg_surface"], borderwidth=0)
         style.configure("Main.TNotebook.Tab", background=THEME["bg_elevated"], foreground=THEME["text_secondary"], padding=(14, 6), font=FONT_TAB)
-        style.map("Main.TNotebook.Tab", background=[("selected", THEME["bg_surface"])], foreground=[("selected", "#FFFFFF")])
+        style.map("Main.TNotebook.Tab", background=[("selected", "#1F6FEB")], foreground=[("selected", "#FFFFFF")])
 
     def _build_menu(self):
-        menubar = tk.Menu(self, background=THEME["bg_surface"], foreground=THEME["text_primary"], activebackground=THEME["bg_highlight"], activeforeground="#FFFFFF", font=FONT_REGULAR)
+        menubar = tk.Menu(self, background=THEME["bg_surface"], foreground=THEME["text_primary"], activebackground=THEME["bg_highlight"], activeforeground=THEME["accent_blue"], font=FONT_REGULAR)
         
-        file_menu = tk.Menu(menubar, tearoff=0, background=THEME["bg_surface"], foreground=THEME["text_primary"], activebackground=THEME["bg_highlight"], activeforeground="#FFFFFF")
+        file_menu = tk.Menu(menubar, tearoff=0, background=THEME["bg_surface"], foreground=THEME["text_primary"], activebackground=THEME["bg_highlight"], activeforeground=THEME["accent_blue"])
         file_menu.add_command(label="⚡ 1-Click Live Triage", command=self.action_live_triage)
         file_menu.add_command(label="🔍 Auto-Scan Target Folder...", command=self.action_browse_target)
         file_menu.add_separator()
@@ -143,7 +152,7 @@ class AegisDFIRDesktopApp(tk.Tk):
         file_menu.add_command(label="Exit", command=self.destroy)
         menubar.add_cascade(label="File", menu=file_menu)
 
-        export_menu = tk.Menu(menubar, tearoff=0, background=THEME["bg_surface"], foreground=THEME["text_primary"], activebackground=THEME["bg_highlight"], activeforeground="#FFFFFF")
+        export_menu = tk.Menu(menubar, tearoff=0, background=THEME["bg_surface"], foreground=THEME["text_primary"], activebackground=THEME["bg_highlight"], activeforeground=THEME["accent_blue"])
         export_menu.add_command(label="📑 Export Executive PDF Audit Report...", command=self.action_export_pdf)
         export_menu.add_command(label="⏱️ Export Correlation PDF Report...", command=self.action_export_corr_pdf)
         export_menu.add_command(label="📄 Export Standard CSV Timeline...", command=self.action_export_csv)
@@ -164,18 +173,18 @@ class AegisDFIRDesktopApp(tk.Tk):
 
         hdr_left = ttk.Frame(header, style="Surface.TFrame")
         hdr_left.pack(side=tk.LEFT)
-        ttk.Label(hdr_left, text="AEGIS-DFIR", style="Header.TLabel").pack(side=tk.LEFT)
-        ttk.Label(hdr_left, text="Windows Forensic & Activity Reconstruction", font=FONT_REGULAR, foreground=THEME["text_muted"], background=THEME["bg_surface"]).pack(side=tk.LEFT, padx=8)
+        ttk.Label(hdr_left, text="🐾 FOOTPRINT ANALYZER", style="Header.TLabel").pack(side=tk.LEFT)
+        ttk.Label(hdr_left, text=" | Windows User Activity Reconstruction & Forensic Workstation", font=FONT_REGULAR, foreground=THEME["text_secondary"], background=THEME["bg_surface"]).pack(side=tk.LEFT, padx=8)
 
         hdr_right = ttk.Frame(header, style="Surface.TFrame")
         hdr_right.pack(side=tk.RIGHT)
-        self.status_indicator = ttk.Label(hdr_right, text="● Ready", font=FONT_REGULAR, foreground=THEME["text_secondary"], background=THEME["bg_surface"])
+        self.status_indicator = ttk.Label(hdr_right, text="● Ready", font=FONT_REGULAR, foreground=THEME["accent_green"], background=THEME["bg_surface"])
         self.status_indicator.pack(side=tk.LEFT, padx=8)
 
-        self.db_sha_label = ttk.Label(hdr_right, text="DB SHA: -", font=FONT_MONO, foreground=THEME["text_muted"], background=THEME["bg_elevated"], padding=(6, 2))
+        self.db_sha_label = ttk.Label(hdr_right, text="DB SHA: -", font=FONT_MONO, foreground=THEME["accent_blue"], background=THEME["bg_elevated"], padding=(6, 2))
         self.db_sha_label.pack(side=tk.LEFT, padx=4)
 
-        # 2. STREAMLINED COMMAND BAR (Zero redundancy)
+        # 2. STREAMLINED COMMAND BAR
         acq_bar = ttk.Frame(master_frame, style="Elevated.TFrame", padding=(10, 8))
         acq_bar.pack(fill=tk.X, padx=6, pady=(2, 2))
 
@@ -204,14 +213,14 @@ class AegisDFIRDesktopApp(tk.Tk):
         ttk.Button(acq_bar, text="Scan Target", command=self.action_scan_target).pack(side=tk.LEFT, padx=(0, 10))
 
         ttk.Button(acq_bar, text="🗑️ Clear DB", style="Danger.TButton", command=self.action_clear_db).pack(side=tk.RIGHT, padx=3)
-        ttk.Button(acq_bar, text="📑 Export PDF", command=self.action_export_pdf).pack(side=tk.RIGHT, padx=3)
+        ttk.Button(acq_bar, text="📑 Export PDF", style="Action.TButton", command=self.action_export_pdf).pack(side=tk.RIGHT, padx=3)
         ttk.Button(acq_bar, text="🔄 Refresh", command=self.refresh_evidence_data).pack(side=tk.RIGHT, padx=3)
 
         # 3. PRIMARY NOTEBOOK
         self.main_notebook = ttk.Notebook(master_frame, style="Main.TNotebook")
         self.main_notebook.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
 
-        # TAB 1: ⏱️ RECONSTRUCTED TIMELINE & CORRELATION (Centerpiece)
+        # TAB 1: ⏱️ RECONSTRUCTED TIMELINE & CORRELATION
         tab_timeline = ttk.Frame(self.main_notebook, style="Surface.TFrame")
         self.main_notebook.add(tab_timeline, text="⏱️ Activity Reconstruction Timeline")
         self._build_timeline_tab(tab_timeline)
@@ -223,12 +232,12 @@ class AegisDFIRDesktopApp(tk.Tk):
 
         # TAB 3: 📊 VISUAL ANALYTICS
         tab_analytics = ttk.Frame(self.main_notebook, style="Surface.TFrame")
-        self.main_notebook.add(tab_analytics, text="📊 Visual Analytics")
+        self.main_notebook.add(tab_analytics, text="📊 Visual Analytics Dashboard")
         self._build_analytics_tab(tab_analytics)
 
         # TAB 4: 📖 ARTIFACT CATALOG
         tab_catalog = ttk.Frame(self.main_notebook, style="Surface.TFrame")
-        self.main_notebook.add(tab_catalog, text="📖 Artifact Catalog")
+        self.main_notebook.add(tab_catalog, text="📖 Artifact Catalog & Paths")
         self._build_catalog_tab(tab_catalog)
 
     # -------------------------------------------------------------
@@ -238,7 +247,7 @@ class AegisDFIRDesktopApp(tk.Tk):
         ctrl_bar = ttk.Frame(parent, style="Elevated.TFrame", padding=(10, 6))
         ctrl_bar.pack(fill=tk.X)
 
-        self.btn_tl_all = ttk.Button(ctrl_bar, text="All Events", style="Primary.TButton", command=self._timeline_filter_all)
+        self.btn_tl_all = ttk.Button(ctrl_bar, text="All Events", style="Action.TButton", command=self._timeline_filter_all)
         self.btn_tl_all.pack(side=tk.LEFT, padx=(0, 4))
 
         self.btn_tl_anomalies = ttk.Button(ctrl_bar, text="🚨 Anomalies Only", command=self._timeline_filter_anomalies)
@@ -252,7 +261,7 @@ class AegisDFIRDesktopApp(tk.Tk):
 
         ttk.Button(ctrl_bar, text="Export Correlation PDF", command=self.action_export_corr_pdf).pack(side=tk.RIGHT, padx=2)
 
-        self.tl_count_label = ttk.Label(ctrl_bar, text="0 Events", font=FONT_REGULAR, background=THEME["bg_elevated"], foreground=THEME["text_secondary"])
+        self.tl_count_label = ttk.Label(ctrl_bar, text="0 Events", font=FONT_REGULAR, background=THEME["bg_elevated"], foreground=THEME["accent_blue"])
         self.tl_count_label.pack(side=tk.RIGHT, padx=8)
 
         # Timeline Paned Window
@@ -270,7 +279,7 @@ class AegisDFIRDesktopApp(tk.Tk):
             "session": ("Session", 75),
             "type": ("Artifact Type", 140),
             "detail": ("Action Detail", 460),
-            "anomaly": ("Anomaly / Indicator", 180),
+            "anomaly": ("Anomaly / Threat Indicator", 180),
             "mitre": ("MITRE ATT&CK", 130)
         }
         for k, (txt, w) in headers.items():
@@ -293,19 +302,19 @@ class AegisDFIRDesktopApp(tk.Tk):
         tl_detail_frame = ttk.Frame(tl_paned, style="Elevated.TFrame", padding=8)
         tl_paned.add(tl_detail_frame, weight=1)
 
-        ttk.Label(tl_detail_frame, text="EVENT DEEP DIVE & MITRE CONTEXT", font=FONT_HEADING, foreground=THEME["text_muted"], background=THEME["bg_elevated"]).pack(anchor=tk.W, pady=(0, 2))
-        self.tl_detail_txt = tk.Text(tl_detail_frame, height=4, background=THEME["bg_surface"], foreground=THEME["text_primary"], insertbackground="#FFFFFF", borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
+        ttk.Label(tl_detail_frame, text="EVENT DEEP DIVE & MITRE CONTEXT", font=FONT_HEADING, foreground=THEME["accent_blue"], background=THEME["bg_elevated"]).pack(anchor=tk.W, pady=(0, 2))
+        self.tl_detail_txt = tk.Text(tl_detail_frame, height=4, background=THEME["bg_surface"], foreground=THEME["text_primary"], insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
         self.tl_detail_txt.pack(fill=tk.BOTH, expand=True)
 
     def _timeline_filter_all(self):
         self.timeline_anomalies_only = False
-        self.btn_tl_all.configure(style="Primary.TButton")
+        self.btn_tl_all.configure(style="Action.TButton")
         self.btn_tl_anomalies.configure(style="TButton")
         self._filter_timeline_table()
 
     def _timeline_filter_anomalies(self):
         self.timeline_anomalies_only = True
-        self.btn_tl_anomalies.configure(style="Primary.TButton")
+        self.btn_tl_anomalies.configure(style="Action.TButton")
         self.btn_tl_all.configure(style="TButton")
         self._filter_timeline_table()
 
@@ -370,8 +379,8 @@ class AegisDFIRDesktopApp(tk.Tk):
 
         sb_header = ttk.Frame(sidebar_frame, style="Elevated.TFrame", padding=(8, 6))
         sb_header.pack(fill=tk.X)
-        ttk.Label(sb_header, text="EVIDENCE CATEGORIES", font=FONT_HEADING, foreground=THEME["text_muted"], background=THEME["bg_elevated"]).pack(side=tk.LEFT)
-        self.sidebar_total_badge = ttk.Label(sb_header, text="0", font=FONT_MONO, foreground=THEME["text_primary"], background=THEME["bg_selected"], padding=(4, 1))
+        ttk.Label(sb_header, text="EVIDENCE CATEGORIES", font=FONT_HEADING, foreground=THEME["text_secondary"], background=THEME["bg_elevated"]).pack(side=tk.LEFT)
+        self.sidebar_total_badge = ttk.Label(sb_header, text="0", font=FONT_MONO_BOLD, foreground="#FFFFFF", background=THEME["bg_selected"], padding=(4, 1))
         self.sidebar_total_badge.pack(side=tk.RIGHT)
 
         self.tree_categories = ttk.Treeview(sidebar_frame, show="tree", selectmode="browse")
@@ -395,7 +404,7 @@ class AegisDFIRDesktopApp(tk.Tk):
         search_entry = ttk.Entry(search_bar, textvariable=self.search_var, width=40)
         search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
 
-        self.table_count_label = ttk.Label(search_bar, text="0 items", background=THEME["bg_surface"], foreground=THEME["text_muted"], font=FONT_REGULAR)
+        self.table_count_label = ttk.Label(search_bar, text="0 items", background=THEME["bg_surface"], foreground=THEME["text_secondary"], font=FONT_REGULAR)
         self.table_count_label.pack(side=tk.RIGHT, padx=2)
 
         # Master Table
@@ -435,7 +444,7 @@ class AegisDFIRDesktopApp(tk.Tk):
 
         ins_header = ttk.Frame(inspector_frame, style="Surface.TFrame", padding=(8, 4))
         ins_header.pack(fill=tk.X)
-        ttk.Label(ins_header, text="DETAIL INSPECTOR", font=FONT_HEADING, foreground=THEME["text_muted"], background=THEME["bg_surface"]).pack(side=tk.LEFT)
+        ttk.Label(ins_header, text="DETAIL INSPECTOR", font=FONT_HEADING, foreground=THEME["accent_blue"], background=THEME["bg_surface"]).pack(side=tk.LEFT)
         self.ins_selected_title = ttk.Label(ins_header, text="[None Selected]", font=FONT_MONO, foreground=THEME["text_secondary"], background=THEME["bg_surface"])
         self.ins_selected_title.pack(side=tk.RIGHT)
 
@@ -446,7 +455,7 @@ class AegisDFIRDesktopApp(tk.Tk):
         tab_overview = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
         self.ins_notebook.add(tab_overview, text="Overview")
 
-        self.ins_lbl_type = ttk.Label(tab_overview, text="Type: -", font=FONT_BOLD, background=THEME["bg_surface"])
+        self.ins_lbl_type = ttk.Label(tab_overview, text="Type: -", font=FONT_BOLD, foreground=THEME["accent_blue"], background=THEME["bg_surface"])
         self.ins_lbl_type.grid(row=0, column=0, sticky=tk.W, pady=2)
 
         self.ins_lbl_time = ttk.Label(tab_overview, text="Timestamp (UTC): -", font=FONT_MONO, foreground=THEME["text_secondary"], background=THEME["bg_surface"])
@@ -459,7 +468,7 @@ class AegisDFIRDesktopApp(tk.Tk):
         self.ins_lbl_path.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
 
         ttk.Label(tab_overview, text="Decoded Extra Attributes:", font=FONT_HEADING, foreground=THEME["text_muted"], background=THEME["bg_surface"]).grid(row=3, column=0, sticky=tk.W, pady=(8, 2))
-        self.ins_txt_extra = tk.Text(tab_overview, height=3, background=THEME["bg_elevated"], foreground=THEME["text_primary"], insertbackground="#FFFFFF", borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
+        self.ins_txt_extra = tk.Text(tab_overview, height=3, background=THEME["bg_elevated"], foreground=THEME["text_primary"], insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
         self.ins_txt_extra.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=2)
 
         tab_overview.columnconfigure(0, weight=1)
@@ -469,13 +478,13 @@ class AegisDFIRDesktopApp(tk.Tk):
         # TAB 2: THREAT CONTEXT
         tab_threat = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
         self.ins_notebook.add(tab_threat, text="Threat Context")
-        self.ins_txt_threat = tk.Text(tab_threat, background=THEME["bg_elevated"], foreground=THEME["accent_threat"], insertbackground="#FFFFFF", borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
+        self.ins_txt_threat = tk.Text(tab_threat, background=THEME["bg_elevated"], foreground=THEME["accent_threat"], insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.WORD)
         self.ins_txt_threat.pack(fill=tk.BOTH, expand=True)
 
         # TAB 3: RAW JSON
         tab_json = ttk.Frame(self.ins_notebook, style="Surface.TFrame", padding=10)
         self.ins_notebook.add(tab_json, text="Raw JSON")
-        self.ins_txt_json = tk.Text(tab_json, background="#000000", foreground="#E4E4E7", insertbackground="#FFFFFF", borderwidth=0, font=FONT_MONO, wrap=tk.NONE)
+        self.ins_txt_json = tk.Text(tab_json, background="#0B0E14", foreground=THEME["accent_blue"], insertbackground=THEME["accent_blue"], borderwidth=0, font=FONT_MONO, wrap=tk.NONE)
         self.ins_txt_json.pack(fill=tk.BOTH, expand=True)
 
     def _populate_hierarchical_category_tree(self):
@@ -515,13 +524,13 @@ class AegisDFIRDesktopApp(tk.Tk):
             self.filter_and_render_table()
 
     # -------------------------------------------------------------
-    # BUILD TAB 3: VISUAL ANALYTICS (Minimalist Matplotlib)
+    # BUILD TAB 3: VISUAL ANALYTICS (Matplotlib Dashboard)
     # -------------------------------------------------------------
     def _build_analytics_tab(self, parent):
         top_ctrl = ttk.Frame(parent, style="Elevated.TFrame", padding=(10, 6))
         top_ctrl.pack(fill=tk.X)
 
-        ttk.Label(top_ctrl, text="EVIDENCE METRICS & CHARTS", font=FONT_HEADING, foreground=THEME["text_muted"], background=THEME["bg_elevated"]).pack(side=tk.LEFT)
+        ttk.Label(top_ctrl, text="EVIDENCE METRICS & CHARTS", font=FONT_HEADING, foreground=THEME["accent_blue"], background=THEME["bg_elevated"]).pack(side=tk.LEFT)
         ttk.Button(top_ctrl, text="Refresh Charts", command=self._render_analytics_charts).pack(side=tk.RIGHT, padx=2)
 
         self.analytics_canvas_frame = ttk.Frame(parent, style="Surface.TFrame")
@@ -533,7 +542,7 @@ class AegisDFIRDesktopApp(tk.Tk):
     def _render_analytics_charts(self):
         self.fig.clear()
         
-        # 1. Timeline Histogram
+        # 1. Timeline Histogram (Sapphire Blue)
         ax1 = self.fig.add_subplot(2, 2, (1, 2))
         ax1.set_facecolor(THEME["bg_elevated"])
         time_buckets = {}
@@ -546,14 +555,14 @@ class AegisDFIRDesktopApp(tk.Tk):
         sorted_days = sorted(time_buckets.keys())
         day_counts = [time_buckets[d] for d in sorted_days]
         if sorted_days:
-            ax1.bar(sorted_days, day_counts, color="#D4D4D8", edgecolor="#27272A", alpha=0.85)
+            ax1.bar(sorted_days, day_counts, color=THEME["accent_blue"], edgecolor="#1F6FEB", alpha=0.85)
             ax1.set_title("Chronological Activity Density (Events over Time)", color=THEME["text_primary"], fontsize=10, fontweight="bold")
-            ax1.tick_params(colors=THEME["text_muted"], labelsize=8, rotation=20)
-            ax1.grid(axis="y", linestyle="--", alpha=0.15)
+            ax1.tick_params(colors=THEME["text_secondary"], labelsize=8, rotation=20)
+            ax1.grid(axis="y", linestyle="--", alpha=0.2)
         else:
             ax1.text(0.5, 0.5, "No Timestamped Evidence Available", color=THEME["text_muted"], ha="center", va="center", fontsize=9)
 
-        # 2. Category Donut
+        # 2. Category Donut (Vibrant Palette)
         ax2 = self.fig.add_subplot(2, 2, 3)
         ax2.set_facecolor(THEME["bg_surface"])
         cat_counts = {}
@@ -563,14 +572,14 @@ class AegisDFIRDesktopApp(tk.Tk):
 
         top_cats = sorted(cat_counts.items(), key=lambda x: x[1], reverse=True)[:6]
         if top_cats:
-            mono_colors = ["#FAFAFA", "#E4E4E7", "#D4D4D8", "#A1A1AA", "#71717A", "#52525B"]
+            donut_colors = [THEME["accent_blue"], THEME["accent_green"], THEME["accent_purple"], "#FFA657", "#39C5CF", THEME["accent_amber"]]
             ax2.pie([c[1] for c in top_cats], labels=[c[0] for c in top_cats], textprops={"color": THEME["text_secondary"], "fontsize": 8},
-                    colors=mono_colors[:len(top_cats)], wedgeprops={"edgecolor": THEME["bg_surface"], "width": 0.5})
+                    colors=donut_colors[:len(top_cats)], wedgeprops={"edgecolor": THEME["bg_surface"], "width": 0.5})
             ax2.set_title("Evidence Categories", color=THEME["text_primary"], fontsize=10, fontweight="bold")
         else:
             ax2.text(0.5, 0.5, "No Categories", color=THEME["text_muted"], ha="center", va="center", fontsize=9)
 
-        # 3. Top Apps Bar
+        # 3. Top Apps Bar (Emerald Green)
         ax3 = self.fig.add_subplot(2, 2, 4)
         ax3.set_facecolor(THEME["bg_elevated"])
         app_counts = {}
@@ -582,10 +591,10 @@ class AegisDFIRDesktopApp(tk.Tk):
 
         top_apps = sorted(app_counts.items(), key=lambda x: x[1], reverse=True)[:5]
         if top_apps:
-            ax3.barh([a[0] for a in top_apps][::-1], [a[1] for a in top_apps][::-1], color="#A1A1AA", edgecolor="#27272A", alpha=0.85)
+            ax3.barh([a[0] for a in top_apps][::-1], [a[1] for a in top_apps][::-1], color=THEME["accent_green"], edgecolor="#238636", alpha=0.85)
             ax3.set_title("Top Executed Applications", color=THEME["text_primary"], fontsize=10, fontweight="bold")
-            ax3.tick_params(colors=THEME["text_muted"], labelsize=8)
-            ax3.grid(axis="x", linestyle="--", alpha=0.15)
+            ax3.tick_params(colors=THEME["text_secondary"], labelsize=8)
+            ax3.grid(axis="x", linestyle="--", alpha=0.2)
         else:
             ax3.text(0.5, 0.5, "No Execution Records", color=THEME["text_muted"], ha="center", va="center", fontsize=9)
 
@@ -598,8 +607,8 @@ class AegisDFIRDesktopApp(tk.Tk):
     def _build_catalog_tab(self, parent):
         intro_frame = ttk.Frame(parent, style="Elevated.TFrame", padding=10)
         intro_frame.pack(fill=tk.X, padx=6, pady=4)
-        ttk.Label(intro_frame, text="Windows Forensic Artifact Catalog", font=FONT_HEADING, foreground=THEME["text_primary"], background=THEME["bg_elevated"]).pack(anchor=tk.W)
-        ttk.Label(intro_frame, text="Double-click any row to load its path into the Target Scanner.", font=FONT_REGULAR, foreground=THEME["text_muted"], background=THEME["bg_elevated"]).pack(anchor=tk.W)
+        ttk.Label(intro_frame, text="Windows Forensic Artifact Catalog", font=FONT_HEADING, foreground=THEME["accent_blue"], background=THEME["bg_elevated"]).pack(anchor=tk.W)
+        ttk.Label(intro_frame, text="Double-click any row to load its path into the Target Scanner.", font=FONT_REGULAR, foreground=THEME["text_secondary"], background=THEME["bg_elevated"]).pack(anchor=tk.W)
 
         cols = ("id", "name", "category", "path", "description")
         self.cat_tree = ttk.Treeview(parent, columns=cols, show="headings", selectmode="browse")
@@ -654,7 +663,7 @@ class AegisDFIRDesktopApp(tk.Tk):
         self.sidebar_total_badge.config(text=f"{len(self.all_artifacts):,}")
         sha = stats.get("db_sha256", "N/A")
         self.db_sha_label.config(text=f"DB SHA: {sha[:12]}..." if len(sha) > 12 else f"DB SHA: {sha}")
-        self.status_indicator.config(text=f"● Indexed {len(self.all_artifacts):,} items ({stats.get('anomalies_detected', 0)} threats)", foreground=THEME["text_secondary"])
+        self.status_indicator.config(text=f"● Indexed {len(self.all_artifacts):,} items ({stats.get('anomalies_detected', 0)} threats)", foreground=THEME["accent_green"])
         
         self.filter_and_render_table()
         self._filter_timeline_table()
@@ -765,7 +774,7 @@ class AegisDFIRDesktopApp(tk.Tk):
     # FORENSIC ACTIONS
     # -------------------------------------------------------------
     def action_live_triage(self):
-        self.status_indicator.config(text="● Triage running...", foreground=THEME["text_muted"])
+        self.status_indicator.config(text="● Triage running...", foreground=THEME["accent_blue"])
         threading.Thread(target=self._live_triage_worker, daemon=True).start()
 
     def _live_triage_worker(self):
@@ -785,7 +794,7 @@ class AegisDFIRDesktopApp(tk.Tk):
             6: "event_logs"
         }
         pid = preset_map.get(idx, "all_triage")
-        self.status_indicator.config(text=f"● Processing '{pid}'...", foreground=THEME["text_muted"])
+        self.status_indicator.config(text=f"● Processing '{pid}'...", foreground=THEME["accent_blue"])
         threading.Thread(target=lambda: self._preset_worker(pid), daemon=True).start()
 
     def _preset_worker(self, pid):
@@ -803,7 +812,7 @@ class AegisDFIRDesktopApp(tk.Tk):
         if not p or not os.path.isdir(p):
             messagebox.showerror("Invalid Path", "Please enter a valid directory path.")
             return
-        self.status_indicator.config(text=f"● Scanning '{p}'...", foreground=THEME["text_muted"])
+        self.status_indicator.config(text=f"● Scanning '{p}'...", foreground=THEME["accent_blue"])
         threading.Thread(target=lambda: self._target_worker(p), daemon=True).start()
 
     def _target_worker(self, p):
@@ -837,7 +846,7 @@ class AegisDFIRDesktopApp(tk.Tk):
                 "evidenceNumber": "EVID-001-WIN-HOST",
                 "examiner": os.environ.get("USERNAME", "Examiner"),
                 "uniqueDescription": "Windows User Activity & Timeline Reconstruction",
-                "notes": "Generated via AegisDFIR Workstation."
+                "notes": "Generated via Footprint Analyzer."
             }
             res = core_logic.generate_pdf_report_core(p, meta)
             if res.get("status") == "success":
@@ -853,7 +862,7 @@ class AegisDFIRDesktopApp(tk.Tk):
                 "evidenceNumber": "EVID-001-CORRELATED",
                 "examiner": os.environ.get("USERNAME", "Examiner"),
                 "uniqueDescription": "Reconstructed Cross-Artifact Timeline",
-                "notes": "Generated via AegisDFIR Correlator."
+                "notes": "Generated via Footprint Analyzer Correlator."
             }
             res = core_logic.generate_correlation_pdf_core(p, meta)
             if res.get("status") == "success":
@@ -862,5 +871,5 @@ class AegisDFIRDesktopApp(tk.Tk):
                 messagebox.showerror("PDF Error", res.get("message", "Error."))
 
 if __name__ == "__main__":
-    app = AegisDFIRDesktopApp()
+    app = FootprintAnalyzerApp()
     app.mainloop()

@@ -873,4 +873,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial Load
     loadArtifactsData();
+    fetchAndRenderTimeline();
+    fetchAndRenderCatalog();
 });

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AegisDFIR - Windows Forensic Analysis & Activity Reconstruction Platform</title>
+    <title>Footprint Analyzer - Windows User Activity Reconstruction Platform</title>
     <link rel="icon" href="logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,23 +20,23 @@
         <header class="dfir-top-header">
             <div class="header-left">
                 <div class="logo-box">
-                    <img src="logo.png" alt="AegisDFIR" class="dfir-logo" onerror="this.style.display='none'">
+                    <img src="logo.png" alt="Footprint Analyzer" class="dfir-logo" onerror="this.style.display='none'">
                     <div class="logo-text">
-                        <span class="logo-title">AEGIS<span>DFIR</span></span>
-                        <span class="logo-tag">ENTERPRISE FORENSICS v1.3</span>
+                        <span class="logo-title">FOOTPRINT<span>ANALYZER</span></span>
+                        <span class="logo-tag">v1.3.4</span>
                     </div>
                 </div>
 
                 <!-- Navigation Tabs -->
                 <nav class="dfir-nav-tabs">
-                    <button class="nav-tab active" data-view="grid-view">
+                    <button class="nav-tab active" data-view="timeline-view">
+                        <span class="tab-icon">⏱️</span> Reconstruction Timeline
+                    </button>
+                    <button class="nav-tab" data-view="grid-view">
                         <span class="tab-icon">📋</span> Artifact Grid
                     </button>
                     <button class="nav-tab" data-view="analytics-view">
                         <span class="tab-icon">📊</span> Visual Analytics
-                    </button>
-                    <button class="nav-tab" data-view="timeline-view">
-                        <span class="tab-icon">⏱️</span> Session Timeline
                     </button>
                     <button class="nav-tab" data-view="catalog-view">
                         <span class="tab-icon">📖</span> Artifact Catalog
@@ -119,7 +119,7 @@
         <div class="dfir-main-workspace">
             
             <!-- VIEW 1: ARTIFACT GRID VIEW (MULTI-PANE: TREE + TABLE + DOCKED INSPECTOR) -->
-            <div id="grid-view" class="view-panel active">
+            <div id="grid-view" class="view-panel">
                 <div class="forensic-layout-columns">
                     
                     <!-- LEFT SIDEBAR: FORENSIC ARTIFACT TREE (AUTOPSY / AXIOM STYLE) -->
@@ -394,7 +394,7 @@
             </div>
 
             <!-- VIEW 3: RECONSTRUCTED SESSION TIMELINE VIEW -->
-            <div id="timeline-view" class="view-panel">
+            <div id="timeline-view" class="view-panel active">
                 <div class="session-timeline-container">
                     <div class="timeline-ctrl-bar">
                         <div class="filter-group">

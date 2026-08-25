@@ -1,4 +1,4 @@
-# 🛡️ Windows Forensic Artifacts Parser & Activity Reconstruction Tool (v1.3)
+# 🐾 Footprint Analyzer - Windows Forensic Artifacts Parser & User Activity Reconstruction Platform (v1.3.4)
 
 [![CI](https://github.com/chinmayiM-bhise/Windows-User-Activity-Reconstruction-Tool/actions/workflows/ci.yml/badge.svg)](https://github.com/chinmayiM-bhise/Windows-User-Activity-Reconstruction-Tool/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](https://www.python.org/)
@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20%7C%20Server-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> An automated, production-grade Digital Forensics and Incident Response (DFIR) platform designed to parse, correlate, and reconstruct user activity and attack timelines from Windows operating systems, live triage, and mounted forensic images. Discovers and parses 12+ artifact types, correlates multi-vector attack chains (Download → Run → Anti-Forensics) with MITRE ATT&CK tagging, and exports compliance-ready **DFIR JSON Timelines**, **Standardized CSVs**, and **Enterprise PDF Forensic Audit Reports**.
+> **Footprint Analyzer** is an automated, enterprise-grade Digital Forensics and Incident Response (DFIR) platform designed to parse, correlate, and reconstruct user activity and attack timelines from Windows operating systems, live triage, and mounted forensic images. Discovers and parses 12+ artifact types, correlates multi-vector attack chains (Download → Run → Anti-Forensics) with MITRE ATT&CK tagging, and exports compliance-ready **DFIR JSON Timelines**, **Standardized CSVs**, and **Enterprise PDF Forensic Audit Reports**.
 
 ---
 
