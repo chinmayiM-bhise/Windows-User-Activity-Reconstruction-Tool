@@ -627,10 +627,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasets: [{
                     label: 'Events Recorded',
                     data: dayCounts.length ? dayCounts : [0],
-                    backgroundColor: 'rgba(0, 229, 255, 0.45)',
-                    borderColor: '#00E5FF',
-                    borderWidth: 1.5,
-                    borderRadius: 4
+                    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+                    borderColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderRadius: 2
                 }]
             },
             options: {
@@ -638,8 +638,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94A3B8', font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94A3B8', font: { size: 10 } } }
+                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#71717A', font: { size: 10 } } },
+                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#71717A', font: { size: 10 } } }
                 }
             }
         });
@@ -661,13 +661,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 labels: sortedCats.map(c => c[0]),
                 datasets: [{
                     data: sortedCats.map(c => c[1]),
-                    backgroundColor: ['#22C55E', '#38BDF8', '#F97316', '#A855F7', '#EF4444', '#EAB308', '#06B6D4', '#EC4899']
+                    backgroundColor: ['#FFFFFF', '#E4E4E7', '#D4D4D8', '#A1A1AA', '#71717A', '#52525B', '#3F3F46', '#27272A'],
+                    borderWidth: 1,
+                    borderColor: '#121316'
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { position: 'right', labels: { color: '#94A3B8', font: { size: 10 } } } }
+                plugins: { legend: { position: 'right', labels: { color: '#A1A1AA', font: { size: 10 } } } }
             }
         });
 
@@ -692,10 +694,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasets: [{
                     label: 'Executions',
                     data: topApps.map(a => a[1]),
-                    backgroundColor: 'rgba(34, 197, 94, 0.5)',
-                    borderColor: '#22C55E',
-                    borderWidth: 1.5,
-                    borderRadius: 4
+                    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+                    borderColor: '#FFFFFF',
+                    borderWidth: 1,
+                    borderRadius: 2
                 }]
             },
             options: {
@@ -704,8 +706,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94A3B8' } },
-                    y: { grid: { display: false }, ticks: { color: '#F0F4FC', font: { size: 10 } } }
+                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#71717A' } },
+                    y: { grid: { display: false }, ticks: { color: '#D4D4D8', font: { size: 10 } } }
                 }
             }
         });
